@@ -360,3 +360,78 @@ describe('dedent', () => {
     expect(dedent('a\n  b')).toBe('a\n  b');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Real Loop table markup, captured from a saved page on 2026-09-16.
+//
+// Every assertion here corresponds to a defect the synthetic fixtures missed,
+// because they encoded what Loop's markup was assumed to look like rather than
+// what it is.
+// ---------------------------------------------------------------------------
+
+describe('Loop tables (real markup)', () => {
+  const md = (): string => body(fixture('loop-table.html'));
+
+  it('emits a GFM pipe table rather than flattened text', () => {
+    const out = md();
+    expect(out).toContain('| Environment | Tag | Notes |');
+    expect(out).toContain('| --- | --- | --- |');
+  });
+
+  it('descends into a paragraph that hosts a block component', () => {
+    // The whole defect in one assertion: the table lives inside a
+    // `.scriptor-paragraph`, which used to be flattened by `buildParagraph`.
+    const out = md();
+    expect(out).toContain('Intro paragraph.');
+    expect(out).toContain('Closing paragraph.');
+    expect(out).toMatch(/^\| Environment/m);
+  });
+
+  it('drops the aria-hidden row-number gutter column', () => {
+    const rows = md()
+      .split('\n')
+      .filter((line) => line.startsWith('|'));
+    // Three content columns, not four: the gutter holding "1" and "2" is gone.
+    for (const row of rows) {
+      expect(row.split(/(?<!\\)\|/).length - 2).toBe(3);
+    }
+    expect(md()).not.toMatch(/^\| 1 \|/m);
+  });
+
+  it('ignores the aria-hidden column-grabber table', () => {
+    // Only one header separator line: the mirror table must not become a
+    // second, empty table.
+    expect(md().match(/^\| --- /gm)).toHaveLength(1);
+  });
+
+  it('excludes the in-table "New" row button', () => {
+    expect(md()).not.toMatch(/\bNew\b/);
+  });
+
+  it('merges a styled run that Loop split across sibling spans', () => {
+    expect(md()).toContain('**Development**');
+    expect(md()).not.toContain('**Dev****elop****ment**');
+  });
+
+  it('merges inline code that Loop fragmented, and does not fence it', () => {
+    const out = md();
+    expect(out).toContain('`dev-ready`');
+    expect(out).not.toContain('```');
+  });
+
+  it('joins multiple paragraphs in a cell with <br>', () => {
+    expect(md()).toContain('Scan is green.<br>Cert is verified.');
+  });
+
+  it('renders a list inside a cell as bullets on one line', () => {
+    expect(md()).toContain('• Sign-off in QA<br>• Pipe \\| in a cell');
+  });
+
+  it('escapes a pipe inside cell content so the table stays valid', () => {
+    expect(md()).toContain('\\|');
+  });
+
+  it('emits no stray hard break from the scriptor-EOP sentinel', () => {
+    expect(md()).not.toMatch(/\\$/m);
+  });
+});

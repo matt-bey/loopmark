@@ -1,0 +1,149 @@
+<!--
+  Loop's real table markup, reproduced from a saved page on 2026-09-16 and
+  rewritten with neutral content. Structure, attributes and nesting depth are
+  faithful; only the text and the hashed CSS-module class names are synthetic.
+
+  The load-bearing details, each of which broke the exporter:
+    - the whole component is hosted INSIDE a `.scriptor-paragraph`
+    - an aria-hidden "column grabber" table mirrors the real one
+    - the first cell of every row is an aria-hidden row-number gutter
+    - a "New" row button sits inside the component, outside the table
+    - cells hold block content (paragraphs, lists), not inline text
+    - a styled run is split across several sibling spans
+-->
+<div class="scriptor-pageContainer">
+  <div class="scriptor-pageFrame scriptor-firstPage">
+    <div class="scriptor-pageBody">
+
+      <div class="scriptor-paragraph">
+        <span class="scriptor-textRun scriptor-inline">Intro paragraph.</span>
+        <br class="scriptor-EOP" />
+      </div>
+
+      <div class="scriptor-paragraph">
+        <span class="scriptor-inline">
+          <div class="scriptor-hosting-element scriptor-component-block">
+            <div class="fui-FluentProvider table-0001">
+              <div data-automation-type="Tablero" class="aB1cD2eF3gH4iJ5kL6mN7w==">
+
+                <table class="xY9zA8bC7dE6fG5hI4jK3w==" data-automation-type="column-grabber-table" aria-hidden="true">
+                  <thead><tr><th></th><th></th><th></th></tr></thead>
+                </table>
+
+                <div class="nQ1rS2tU3vW4xY5zA6bC7d==">
+                  <table role="table" data-automation-type="user-data-table" class="mK8lN7oP6qR5sT4uV3wX2y==">
+                    <thead>
+                      <tr role="row">
+                        <th aria-hidden="true"></th>
+                        <th role="columnheader">
+                          <div data-automation-type="table-cell-presence-indicator">
+                            <div data-automation-type="table-column-resize-element" aria-hidden="true"></div>
+                            <div><div role="presentation">
+                              <svg data-automation-type="RichText" aria-hidden="true"></svg>
+                              <div>Environment</div>
+                            </div></div>
+                          </div>
+                        </th>
+                        <th role="columnheader">
+                          <div data-automation-type="table-cell-presence-indicator">
+                            <div><div role="presentation"><div>Tag</div></div></div>
+                          </div>
+                        </th>
+                        <th role="columnheader">
+                          <div data-automation-type="table-cell-presence-indicator">
+                            <div><div role="presentation"><div>Notes</div></div></div>
+                          </div>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td aria-hidden="true"><div><span role="presentation"><div>1</div></span></div></td>
+                        <td role="cell">
+                          <div data-automation-type="table-cell-presence-indicator">
+                            <div class="scriptor-pageContainer">
+                              <div class="scriptor-pageBody scriptor-simpleViewPage">
+                                <div class="scriptor-paragraph">
+                                  <!-- one bold phrase, split across three runs the way Loop stores edits -->
+                                  <strong><span class="scriptor-textRun scriptor-inline">Dev</span></strong><strong><span
+                                    class="scriptor-textRun scriptor-inline">elop</span></strong><strong><span
+                                    class="scriptor-textRun scriptor-inline">ment</span></strong>
+                                  <br class="scriptor-EOP" />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td role="cell">
+                          <div data-automation-type="table-cell-presence-indicator">
+                            <div class="scriptor-pageContainer"><div class="scriptor-pageBody">
+                              <div class="scriptor-paragraph">
+                                <!-- inline code, fragmented one character at a time -->
+                                <span class="scriptor-textRun scriptor-inline scriptor-code-editor scriptor-code-first">de</span><span
+                                      class="scriptor-textRun scriptor-inline scriptor-code-editor scriptor-code-middle">v-</span><span
+                                      class="scriptor-textRun scriptor-inline scriptor-code-editor scriptor-code-last">ready</span>
+                                <br class="scriptor-EOP" />
+                              </div>
+                            </div></div>
+                          </div>
+                        </td>
+                        <td role="cell">
+                          <div data-automation-type="table-cell-presence-indicator">
+                            <div class="scriptor-pageContainer"><div class="scriptor-pageBody">
+                              <div class="scriptor-paragraph">
+                                <span class="scriptor-textRun scriptor-inline">Scan is green.</span>
+                                <br class="scriptor-EOP" />
+                              </div>
+                              <div class="scriptor-paragraph">
+                                <span class="scriptor-textRun scriptor-inline">Cert is verified.</span>
+                                <br class="scriptor-EOP" />
+                              </div>
+                            </div></div>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td aria-hidden="true"><div><span role="presentation"><div>2</div></span></div></td>
+                        <td role="cell">
+                          <div class="scriptor-paragraph">
+                            <span class="scriptor-textRun scriptor-inline">Production</span>
+                            <br class="scriptor-EOP" />
+                          </div>
+                        </td>
+                        <td role="cell">
+                          <div class="scriptor-paragraph">
+                            <span class="scriptor-textRun scriptor-inline">stable</span>
+                            <br class="scriptor-EOP" />
+                          </div>
+                        </td>
+                        <td role="cell">
+                          <div class="scriptor-pageContainer"><div class="scriptor-pageBody">
+                            <ul>
+                              <li class="scriptor-listItem-marker-bullet" aria-level="1">Sign-off in QA</li>
+                              <li class="scriptor-listItem-marker-bullet" aria-level="1">Pipe | in a cell</li>
+                            </ul>
+                          </div></div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- the "add a row" affordance, inside the component but outside the table -->
+                <button type="button" class="fui-Button"><span>New</span></button>
+
+              </div>
+            </div>
+          </div>
+        </span>
+        <br class="scriptor-EOP" />
+      </div>
+
+      <div class="scriptor-paragraph">
+        <span class="scriptor-textRun scriptor-inline">Closing paragraph.</span>
+        <br class="scriptor-EOP" />
+      </div>
+
+    </div>
+  </div>
+</div>
