@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   composedChildren,
+  composedParent,
   composedText,
   countShadowRoots,
   expandCollapsed,
@@ -128,6 +129,29 @@ describe('findContentRoot', () => {
   it('degrades to body rather than returning nothing', () => {
     document.body.innerHTML = '<span>bare</span>';
     expect(findContentRoot(document).strategy).toBe('fallback-body');
+  });
+
+  it('climbs from paragraph blocks when every named candidate is gone', () => {
+    // Simulates Microsoft renaming every page-container class at once.
+    document.body.innerHTML = `
+      <div class="wrapper-xyz"><div class="inner-abc">
+        <div class="scriptor-paragraph">One paragraph of content here.</div>
+        <div class="scriptor-paragraph">Two paragraphs of content here.</div>
+        <div class="scriptor-paragraph">Three paragraphs of content here.</div>
+      </div></div>`;
+    const result = findContentRoot(document);
+    expect(result.strategy).toBe('paragraph-ancestor');
+    expect((result.root as HTMLElement).className).toBe('inner-abc');
+  });
+
+  it('steps across a shadow boundary when finding a composed parent', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = host.attachShadow({ mode: 'open' });
+    root.innerHTML = '<p id="deep">x</p>';
+    const p = root.getElementById('deep')!;
+    expect(p.parentElement).toBeNull();
+    expect(composedParent(p)).toBe(host);
   });
 
   it('picks the largest of several matching candidates', () => {

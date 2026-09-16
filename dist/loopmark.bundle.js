@@ -2,7 +2,7 @@
 (() => {
   // src/selectors.ts
   var LOOP_HOSTS = [
-    // The current Loop web app. VERIFIED 2026-09-16 (from the user's own URLs).
+    // VERIFIED 2026-09-16 -- the current Loop web app.
     "loop.cloud.microsoft"
   ];
   function isLoopHost(host) {
@@ -10,32 +10,45 @@
     return LOOP_HOSTS.some((allowed) => h === allowed || h.endsWith(`.${allowed}`));
   }
   var CONTENT_ROOT_CANDIDATES = [
-    // Loop's canvas surface. UNVERIFIED -- fill in exact value from probe output.
-    { name: "loop-canvas-testid", selector: '[data-testid="canvas"]' },
-    { name: "loop-page-canvas", selector: '[class*="pageCanvas" i]' },
-    { name: "loop-canvas-class", selector: '[class*="canvas" i][contenteditable]' },
-    // The Fluid editor surface. Loop pages are editable documents, so the
-    // contenteditable region is the single most reliable structural signal.
-    // UNVERIFIED but very likely.
+    // VERIFIED 2026-09-16 via loopd -- Scriptor's own page containers.
+    { name: "scriptor-page-container", selector: "div.scriptor-pageContainer" },
+    { name: "page-container-fuzzy", selector: 'div[class*="pageContainer" i]' },
+    { name: "scriptor-first-page", selector: ".scriptor-pageFrame.scriptor-firstPage" },
+    { name: "scriptor-page-body", selector: ".scriptor-pageBody" },
+    { name: "scriptor-page-frame", selector: ".scriptor-pageFrame" },
+    { name: "scriptor-canvas", selector: ".scriptor-canvas" },
+    // Loop components embedded in a host page (Teams, Outlook, a Loop workspace).
+    { name: "component-part-host", selector: '[id^="componentPartHostingElementId"]' },
+    // Structural fallbacks. Loop pages are editable documents, so the
+    // contenteditable region is a strong signal independent of class names.
     { name: "main-contenteditable", selector: '[role="main"] [contenteditable="true"]' },
     { name: "contenteditable-true", selector: '[contenteditable="true"]' },
     { name: "contenteditable-any", selector: '[contenteditable]:not([contenteditable="false"])' },
-    // ARIA landmarks. Slowest-moving signals; these are the safety net.
+    // ARIA landmarks. Slowest-moving signals; the safety net.
     { name: "aria-document", selector: '[role="document"]' },
-    { name: "aria-textbox", selector: '[role="textbox"]' },
     { name: "aria-main", selector: '[role="main"]' },
     { name: "main-element", selector: "main" }
   ];
+  var PARAGRAPH_SELECTOR = '.scriptor-paragraph, [class*="scriptor-paragraph" i]';
+  var MIN_PARAGRAPHS_FOR_ROOT = 3;
   var MIN_CONTENT_ROOT_CHARS = 40;
   var TITLE_CANDIDATES = [
-    '[data-testid="page-title"]',
+    ".scriptor-pageTitle",
+    '[data-automation-type="Title"]',
     '[class*="pageTitle" i]',
-    '[class*="titleInput" i]',
     '[role="main"] [role="heading"][aria-level="1"]',
     "h1"
   ];
   var EXCLUDE_SELECTORS = [
-    // Editor affordances that render inside the content region.
+    // VERIFIED 2026-09-16 via loopd -- the page header carries the cover image,
+    // author chips and presence avatars, none of which are document content.
+    ".scriptor-pageHeader",
+    '[class*="scriptor-pageHeader" i]',
+    // The page title is read separately by `findTitle` and rendered as the
+    // document's `# ` heading, so including it in the body duplicates it.
+    ".scriptor-pageTitle",
+    '[data-automation-type="Title"]',
+    // Editor affordances rendered inside the content region.
     '[data-testid="comment-thread"]',
     '[class*="commentThread" i]',
     '[class*="Toolbar" i]',
@@ -50,31 +63,36 @@
     '[role="navigation"]',
     '[role="complementary"]',
     '[role="search"]',
-    // Loop renders a persistent "+" / drag handle rail beside each block.
+    // The "+" / drag rail beside each block.
     '[class*="blockHandle" i]',
     '[class*="dragHandle" i]',
     '[data-testid="block-handle"]',
     // Presence cursors and collaborator avatars.
     '[class*="presence" i]',
     '[class*="collabCursor" i]',
-    // Anything explicitly hidden from assistive tech is also not content.
+    /**
+     * IMPORTANT: Loop renders a duplicate, `aria-hidden` copy of list items that
+     * belong to an earlier list via `aria-owns`. Excluding aria-hidden subtrees
+     * is what stops every bullet in an owned list appearing twice.
+     * VERIFIED 2026-09-16 via loopd.
+     */
     '[aria-hidden="true"]',
     "[hidden]",
     // loopmark's own overlay, so re-running does not capture the previous run.
     "loopmark-overlay"
   ];
   var EXPANDABLE_ALLOWLIST = [
+    // VERIFIED 2026-09-16 via loopd -- Scriptor's collapsed-heading toggle.
+    '[class*="scriptor-collapseButtonContainer" i][aria-expanded="false"]',
     // Native disclosure.
     'summary[aria-expanded="false"]',
-    // ARIA disclosure buttons for collapsed headings / sections.
+    // Generic ARIA disclosure buttons.
     'button[aria-expanded="false"][class*="collaps" i]',
     'button[aria-expanded="false"][class*="expand" i]',
     'button[aria-expanded="false"][class*="chevron" i]',
     'button[aria-expanded="false"][class*="disclosure" i]',
     '[role="button"][aria-expanded="false"][class*="collaps" i]',
     '[role="button"][aria-expanded="false"][class*="expand" i]',
-    // Loop's "Show more" affordance on truncated blocks. UNVERIFIED.
-    '[data-testid="show-more"][aria-expanded="false"]',
     // Collapsed outline headings expose aria-expanded on the heading itself.
     '[role="heading"][aria-expanded="false"]'
   ];
@@ -89,22 +107,33 @@
   ];
   var MAX_EXPAND_CLICKS = 200;
   var FORCE_RENDER = {
-    /** Number of scroll positions to visit between top and bottom. */
+    /** Scroll positions to visit between top and bottom. */
     steps: 8,
-    /** Milliseconds to wait after each scroll for React to commit new rows. */
+    /** Milliseconds to wait after each scroll for new rows to commit. */
     settleMs: 120,
     /** Extra wait at the bottom, where the largest batch usually renders. */
     bottomSettleMs: 350,
-    /** Abort scrolling after this long, so a huge page cannot hang the click. */
+    /** Abort after this long, so a huge page degrades rather than hanging. */
     budgetMs: 8e3
   };
+  var HEADING_CLASS_PATTERN = /scriptor-collapsibleHeading|scriptor-heading|scriptor-title/i;
+  var HEADING_LEVEL_CLASS_PATTERN = /heading\s*(\d)/i;
+  var PARAGRAPH_CLASS_PATTERN = /scriptor-paragraph/i;
+  var TASK_CLASS_PATTERN = /scriptor-task|scriptor-checkbox/i;
+  var CALLOUT_CLASS_PATTERN = /scriptor-callout|scriptor-infoBlock|scriptor-highlightBlock|scriptor-component-block-callout|scriptor-block-callout/i;
+  var CODE_BLOCK_CLASS_PATTERN = /scriptor-codeBlock|scriptor-code-editor|code-snippet/i;
+  var INLINE_CODE_CLASS_PATTERN = /scriptor-inlineCode/i;
+  var DIVIDER_CLASS_PATTERN = /scriptor-divider|scriptor-horizontalRule/i;
+  var TABLE_ROW_CLASS_PATTERN = /scriptor-tableRow/i;
+  var TABLE_CELL_CLASS_PATTERN = /scriptor-tableCell/i;
+  var LINK_CLASS_PATTERN = /scriptor-hyperlink/i;
+  var LINK_TITLE_SUFFIX = /\s*\n\s*click to follow link\s*$/i;
   var COMPONENT_SELECTORS = [
     { kind: "loop-task-list", selector: '[data-testid="task-list"]' },
     { kind: "loop-voting-table", selector: '[data-testid="voting-table"]' },
     { kind: "loop-progress-tracker", selector: '[data-testid="progress-tracker"]' },
     { kind: "loop-kanban", selector: '[data-testid="kanban-board"]' },
-    { kind: "loop-component", selector: "[data-loop-component]" },
-    { kind: "loop-component", selector: '[class*="loopComponent" i]' }
+    { kind: "loop-component", selector: "[data-loop-component]" }
   ];
   var MENTION_SELECTORS = [
     '[data-testid="mention"]',
@@ -114,7 +143,8 @@
   ];
   var CALLOUT_PATTERNS = [
     { pattern: /danger|error|critical|blocker/i, alert: "CAUTION" },
-    { pattern: /warn|caution|risk/i, alert: "WARNING" },
+    { pattern: /caution/i, alert: "CAUTION" },
+    { pattern: /warn|risk/i, alert: "WARNING" },
     { pattern: /important|key|highlight/i, alert: "IMPORTANT" },
     { pattern: /tip|hint|success|idea/i, alert: "TIP" },
     { pattern: /note|info|callout/i, alert: "NOTE" }
@@ -172,6 +202,11 @@
   function pierceQuerySelector(root, selector) {
     return pierceQuerySelectorAll(root, selector)[0] ?? null;
   }
+  function pierceGetElementById(root, id) {
+    if (!id) return null;
+    const escaped = id.replace(/["\\]/g, "\\$&");
+    return pierceQuerySelector(root, `[id="${escaped}"]`);
+  }
   function composedText(node) {
     let out = "";
     walkComposed(node, (n) => {
@@ -207,8 +242,24 @@
       }
       return { root: best, strategy: candidate.name, rejected };
     }
+    const paragraphs = pierceQuerySelectorAll(doc, PARAGRAPH_SELECTOR);
+    if (paragraphs.length >= MIN_PARAGRAPHS_FOR_ROOT && paragraphs[0]) {
+      let parent = composedParent(paragraphs[0]);
+      while (parent && parent !== doc.body) {
+        if (pierceQuerySelectorAll(parent, PARAGRAPH_SELECTOR).length >= MIN_PARAGRAPHS_FOR_ROOT) {
+          return { root: parent, strategy: "paragraph-ancestor", rejected };
+        }
+        parent = composedParent(parent);
+      }
+    }
+    rejected.push(`paragraph-ancestor: found ${paragraphs.length} paragraph blocks`);
     rejected.push("all candidates exhausted");
     return { root: doc.body, strategy: "fallback-body", rejected };
+  }
+  function composedParent(el2) {
+    if (el2.parentElement) return el2.parentElement;
+    const root = el2.getRootNode();
+    return root instanceof ShadowRoot ? root.host : null;
   }
   function findTitle(doc = document) {
     for (const selector of TITLE_CANDIDATES) {
@@ -336,10 +387,15 @@
     }
     return null;
   }
+  function classOf(el2) {
+    const value = el2.className;
+    return typeof value === "string" ? value : el2.getAttribute("class") ?? "";
+  }
   var attrBag = (el2) => [
-    typeof el2.className === "string" ? el2.className : "",
+    classOf(el2),
     el2.getAttribute("data-testid") ?? "",
     el2.getAttribute("data-callout-type") ?? "",
+    el2.getAttribute("data-type") ?? "",
     el2.getAttribute("aria-label") ?? "",
     el2.getAttribute("role") ?? ""
   ].join(" ");
@@ -432,14 +488,24 @@
     if (SKIP_TAGS.has(tag)) return "skip";
     if (excluded(el2)) return "skip";
     const role = (el2.getAttribute("role") ?? "").toLowerCase();
-    if (role === "heading" || /^H[1-6]$/.test(tag)) return "heading";
+    const cls = classOf(el2);
+    if (role === "heading" || /^H[1-6]$/.test(tag) || HEADING_CLASS_PATTERN.test(cls) || (el2.getAttribute("data-automation-type") ?? "").toLowerCase().includes("heading")) {
+      return "heading";
+    }
     if (componentKind(el2)) return "component";
     if (isMention(el2)) return "inline";
-    if (tag === "PRE") return "code";
-    if (tag === "HR" || role === "separator") return "break";
+    if (tag === "PRE" || CODE_BLOCK_CLASS_PATTERN.test(cls)) return "code";
+    if (tag === "HR" || role === "separator" || DIVIDER_CLASS_PATTERN.test(cls)) return "break";
     if (tag === "TABLE" || role === "table" || role === "grid") return "table";
+    if (/scriptor-table/i.test(cls) && !TABLE_ROW_CLASS_PATTERN.test(cls) && !TABLE_CELL_CLASS_PATTERN.test(cls)) {
+      return "table";
+    }
     if (tag === "UL" || tag === "OL" || tag === "MENU" || role === "list") return "list";
-    if (tag === "BLOCKQUOTE" || role === "note" || isCalloutish(el2)) return "quote";
+    if (tag === "BLOCKQUOTE" || role === "note" || CALLOUT_CLASS_PATTERN.test(cls) || isCalloutish(el2)) {
+      return "quote";
+    }
+    if (TASK_CLASS_PATTERN.test(cls)) return "task";
+    if (PARAGRAPH_CLASS_PATTERN.test(cls)) return "paragraph";
     if (INLINE_TAGS.has(tag)) return "inline";
     return "container";
   }
@@ -462,6 +528,11 @@
     }
     const m = /^H([1-6])$/.exec(el2.tagName.toUpperCase());
     if (m?.[1]) return parseInt(m[1], 10);
+    const fromClass = HEADING_LEVEL_CLASS_PATTERN.exec(classOf(el2));
+    if (fromClass?.[1]) {
+      const n = parseInt(fromClass[1], 10);
+      if (n >= 1 && n <= 6) return n;
+    }
     return 3;
   }
   function computed(el2) {
@@ -498,6 +569,13 @@
       isStruck
     );
   }
+  function resolveHref(el2) {
+    const direct = el2.getAttribute("href") ?? el2.getAttribute("data-href") ?? "";
+    if (direct) return direct;
+    const title = (el2.getAttribute("title") ?? "").replace(LINK_TITLE_SUFFIX, "").trim();
+    const first = (title.split("\n")[0] ?? "").trim();
+    return /^(https?:\/\/|mailto:|tel:|\/)/i.test(first) ? first : "";
+  }
   var MAX_DEPTH = 120;
   function inlineChildren(el2, ctx) {
     const out = [];
@@ -526,13 +604,15 @@
         const name = composedText(node).replace(/\s+/g, " ").trim();
         return name ? [{ type: "mention", name }] : [];
       }
-      if (tag === "A") {
-        const href = node.getAttribute("href") ?? "";
+      const cls = classOf(node);
+      const role = (node.getAttribute("role") ?? "").toLowerCase();
+      if (tag === "A" || role === "link" || LINK_CLASS_PATTERN.test(cls)) {
+        const href = resolveHref(node);
         const children2 = inlineChildren(node, ctx);
         if (!href) return children2;
         return [{ type: "link", href, children: children2 }];
       }
-      if (tag === "CODE" || tag === "KBD" || tag === "SAMP" || tag === "TT") {
+      if (tag === "CODE" || tag === "KBD" || tag === "SAMP" || tag === "TT" || INLINE_CODE_CLASS_PATTERN.test(cls)) {
         const value = composedText(node).replace(/\s+/g, " ").trim();
         return value ? [{ type: "code", value }] : [];
       }
@@ -639,6 +719,22 @@
               blocks: collectBlocks(child, ctx)
             });
             break;
+          case "paragraph":
+            out.push(...buildParagraph(child, ctx));
+            break;
+          case "task": {
+            const item = {
+              checked: checkedState(child) ?? false,
+              blocks: collectBlocks(child, ctx)
+            };
+            const previous = out[out.length - 1];
+            if (previous && previous.type === "list" && !previous.ordered) {
+              previous.items.push(item);
+            } else {
+              out.push({ type: "list", ordered: false, start: 1, items: [item] });
+            }
+            break;
+          }
           case "container": {
             const tag = child.tagName.toUpperCase();
             if (!KNOWN_CONTAINERS.has(tag)) {
@@ -659,13 +755,46 @@
       ctx.depth -= 1;
     }
   }
+  function buildParagraph(el2, ctx) {
+    const BLOCK_KINDS = ["list", "table", "code", "quote", "heading", "component", "task"];
+    const kids = composedChildren(el2).filter(isElement2);
+    if (kids.some((kid) => BLOCK_KINDS.includes(classify(kid)))) {
+      return collectBlocks(el2, ctx);
+    }
+    const children = [];
+    for (const kid of composedChildren(el2)) {
+      if (isElement2(kid) && classify(kid) === "container") {
+        if (inlineIsEmpty(children)) children.length = 0;
+        else children.push({ type: "break" });
+        children.push(...inlineChildren(kid, ctx));
+        continue;
+      }
+      children.push(...toInline(kid, ctx));
+    }
+    const trimmed = trimInline(children);
+    if (trimmed.length === 0 || inlineIsEmpty(trimmed)) return [];
+    if (trimmed.length === 1 && trimmed[0].type === "image") {
+      const img = trimmed[0];
+      return [{ type: "image", alt: img.alt, src: img.src }];
+    }
+    return [{ type: "paragraph", children: trimmed }];
+  }
   function listItemElements(listEl) {
+    const owns = listEl.getAttribute("aria-owns");
+    if (owns) {
+      const owned = [];
+      for (const id of owns.split(/\s+/)) {
+        const el2 = pierceGetElementById(listEl.ownerDocument ?? document, id);
+        if (el2 && !excluded(el2)) owned.push(el2);
+      }
+      if (owned.length > 0) return owned;
+    }
     const items = [];
     for (const child of composedChildren(listEl)) {
       if (!isElement2(child)) continue;
       if (SKIP_TAGS.has(child.tagName.toUpperCase()) || excluded(child)) continue;
       const role = (child.getAttribute("role") ?? "").toLowerCase();
-      if (child.tagName.toUpperCase() === "LI" || role === "listitem") {
+      if (child.tagName.toUpperCase() === "LI" || role === "listitem" || TASK_CLASS_PATTERN.test(classOf(child))) {
         items.push(child);
         continue;
       }
@@ -681,18 +810,26 @@
     if (ariaChecked === "false") return false;
     const role = (el2.getAttribute("role") ?? "").toLowerCase();
     if (role === "checkbox") return false;
-    for (const child of composedChildren(el2)) {
-      if (!isElement2(child)) continue;
-      const tag = child.tagName.toUpperCase();
-      if (tag === "INPUT" && child.getAttribute("type") === "checkbox") {
-        return child.checked || child.hasAttribute("checked");
+    const search = (node, depth) => {
+      if (depth > 3) return null;
+      for (const child of composedChildren(node)) {
+        if (!isElement2(child)) continue;
+        const tag = child.tagName.toUpperCase();
+        if (tag === "INPUT" && child.getAttribute("type") === "checkbox") {
+          return child.checked || child.hasAttribute("checked");
+        }
+        const nested = child.getAttribute("aria-checked");
+        if (nested === "true") return true;
+        if (nested === "false") return false;
+        if ((child.getAttribute("role") ?? "").toLowerCase() === "checkbox") return false;
+        const deeper = search(child, depth + 1);
+        if (deeper !== null) return deeper;
       }
-      const nested = child.getAttribute("aria-checked");
-      if (nested === "true") return true;
-      if (nested === "false") return false;
-      if ((child.getAttribute("role") ?? "").toLowerCase() === "checkbox") return false;
-    }
-    return null;
+      return null;
+    };
+    const found = search(el2, 0);
+    if (found !== null) return found;
+    return TASK_CLASS_PATTERN.test(classOf(el2)) ? false : null;
   }
   function buildList(listEl, ctx) {
     const ordered = listEl.tagName.toUpperCase() === "OL" || (listEl.getAttribute("role") ?? "").toLowerCase() === "list" && listEl.hasAttribute("start");
@@ -725,6 +862,7 @@
       bucket.push({ checked: checkedState(itemEl), blocks });
     }
     flushBucket();
+    if (out.length === 0) return collectBlocks(listEl, ctx);
     return out;
   }
   function tableRows(el2) {
@@ -735,7 +873,7 @@
         if (SKIP_TAGS.has(child.tagName.toUpperCase()) || excluded(child)) continue;
         const tag = child.tagName.toUpperCase();
         const role = (child.getAttribute("role") ?? "").toLowerCase();
-        if (tag === "TR" || role === "row") {
+        if (tag === "TR" || role === "row" || TABLE_ROW_CLASS_PATTERN.test(classOf(child))) {
           rows.push(child);
           continue;
         }
@@ -753,7 +891,7 @@
         if (SKIP_TAGS.has(child.tagName.toUpperCase()) || excluded(child)) continue;
         const tag = child.tagName.toUpperCase();
         const role = (child.getAttribute("role") ?? "").toLowerCase();
-        if (tag === "TD" || tag === "TH" || role === "cell" || role === "gridcell" || role === "columnheader" || role === "rowheader") {
+        if (tag === "TD" || tag === "TH" || role === "cell" || role === "gridcell" || role === "columnheader" || role === "rowheader" || TABLE_CELL_CLASS_PATTERN.test(classOf(child))) {
           cells.push(child);
           continue;
         }
@@ -805,9 +943,26 @@
     }
     return null;
   }
+  function dedent(value) {
+    const lines = value.split("\n");
+    let common = null;
+    for (const line of lines) {
+      if (line.trim() === "") continue;
+      const indent = /^[ \t]*/.exec(line)[0];
+      if (common === null) {
+        common = indent;
+        continue;
+      }
+      let i = 0;
+      while (i < common.length && i < indent.length && common[i] === indent[i]) i += 1;
+      common = common.slice(0, i);
+    }
+    if (!common) return value;
+    return lines.map((line) => line.startsWith(common) ? line.slice(common.length) : line).join("\n");
+  }
   function buildCode(el2) {
     let value = composedText(el2).replace(/\r\n?/g, "\n");
-    value = value.replace(/^\n+/, "").replace(/\s+$/, "");
+    value = dedent(value.replace(/^\n+/, "").replace(/[ \t]+$/gm, "")).replace(/\s+$/, "");
     return { type: "code", lang: detectLanguage(el2), value };
   }
   function escapeText(value) {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { convertElement, escapeText, renderInline, resetMatchers } from '../src/convert.js';
+import { convertElement, escapeText, renderInline, resetMatchers, resolveHref, dedent } from '../src/convert.js';
 import { body, fixture, html } from './helpers.js';
 
 beforeEach(() => {
@@ -263,5 +263,100 @@ describe('document assembly', () => {
     const result = convertElement(el);
     expect(result.diagnostics.unrecognizedSamples).toContain('x-unknown-widget');
     expect(result.markdown).toContain('Text');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Loop's actual ("Scriptor") markup
+// ---------------------------------------------------------------------------
+
+describe('Loop Scriptor markup', () => {
+  it('recognizes headings expressed only as a class name', () => {
+    const md = body(fixture('loop-markup.html'));
+    expect(md).toContain('## Background');
+    expect(md).not.toMatch(/^\s*[-*+]\s+#/m);
+  });
+
+  it('extracts link destinations from the title attribute', () => {
+    // Loop renders <span role="link" title="URL\nClick to follow link">, not
+    // <a href>. Missing this drops every URL while the output still looks fine.
+    const md = body(fixture('loop-markup.html'));
+    expect(md).toContain('[the spec](https://example.invalid/spec)');
+    expect(md).toContain('[the RFC](https://example.invalid/rfc)');
+    expect(md).not.toContain('Click to follow link');
+  });
+
+  it('does not turn an ordinary tooltip into a link', () => {
+    expect(body(fixture('loop-markup.html'))).toContain('A tooltip is not a link.');
+  });
+
+  it('joins soft lines within a paragraph with a hard break, not a blank line', () => {
+    const md = body(fixture('loop-markup.html'));
+    expect(md).toContain('First line of the paragraph\\\nsecond line of the same paragraph.');
+  });
+
+  it('does not emit a stray leading hard break from pretty-printed markup', () => {
+    // The whitespace text node before the first <div class="scriptor-line">
+    // must not count as content worth breaking after.
+    expect(body(fixture('loop-markup.html'))).not.toMatch(/^\\$/m);
+  });
+
+  it('maps a data-type callout onto the matching GitHub Alert', () => {
+    expect(body(fixture('loop-markup.html')))
+      .toContain('> [!WARNING]\n> Rotate the key before the cutover.');
+  });
+
+  it('reads inline code, code blocks and dividers from class names', () => {
+    const md = body(fixture('loop-markup.html'));
+    expect(md).toContain('`settings.json`');
+    expect(md).toContain('```bash\necho one\n```');
+    expect(md).toContain('\n---\n');
+  });
+
+  it('gathers standalone task items into one checklist', () => {
+    const md = body(fixture('loop-markup.html'));
+    expect(md).toContain('- [x] Ship the probe\n- [ ] Verify selectors');
+  });
+
+  it('drops the page header chrome', () => {
+    expect(body(fixture('loop-markup.html'))).not.toContain('presence avatars');
+  });
+
+  it('resolves aria-owns list items and does not duplicate the hidden copy', () => {
+    const md = body(fixture('aria-owns-list.html'));
+    expect(md).toBe('- Owned one\n- Owned two');
+    expect(md.match(/Owned one/g)!.length).toBe(1);
+  });
+});
+
+describe('resolveHref', () => {
+  it('prefers a real href, then data-href, then a URL-shaped title', () => {
+    const make = (attrs: string): Element => {
+      const d = document.createElement('div');
+      d.innerHTML = `<span ${attrs}>x</span>`;
+      return d.firstElementChild!;
+    };
+    expect(resolveHref(make('href="https://example.invalid/a"'))).toBe('https://example.invalid/a');
+    expect(resolveHref(make('data-href="https://example.invalid/b"'))).toBe('https://example.invalid/b');
+    expect(resolveHref(make('title="https://example.invalid/c&#10;Click to follow link"')))
+      .toBe('https://example.invalid/c');
+    expect(resolveHref(make('title="mailto:someone@example.invalid"')))
+      .toBe('mailto:someone@example.invalid');
+    expect(resolveHref(make('title="Just a tooltip"'))).toBe('');
+    expect(resolveHref(make(''))).toBe('');
+  });
+});
+
+describe('dedent', () => {
+  it('removes the indentation HTML added but keeps relative indentation', () => {
+    expect(dedent('    if (x) {\n      go();\n    }')).toBe('if (x) {\n  go();\n}');
+  });
+
+  it('ignores blank lines when computing the common prefix', () => {
+    expect(dedent('  a\n\n  b')).toBe('a\n\nb');
+  });
+
+  it('is a no-op when a line starts at column zero', () => {
+    expect(dedent('a\n  b')).toBe('a\n  b');
   });
 });

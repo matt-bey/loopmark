@@ -1,0 +1,56 @@
+loopmark
+Copyright (c) 2026 Matt Bey
+Licensed under the MIT License. See LICENSE.
+
+================================================================================
+Third-party attribution
+================================================================================
+
+This product contains DOM selector knowledge derived from:
+
+    loopd
+    https://github.com/stuffbucket/loopd
+    Copyright (c) stuffbucket
+    Licensed under the MIT License.
+
+No loopd source code is included in loopmark. What was taken is the discovery
+work: which DOM structures Microsoft Loop actually uses. Specifically, the
+following facts recorded in `src/selectors.ts` were learned from reading
+`plugins/loopd-loop-export/loopd.js`:
+
+  - Loop's editor is internally named "Scriptor" and prefixes its class names
+    accordingly (scriptor-pageContainer, scriptor-paragraph, and so on).
+  - The ordered list of page content container selectors.
+  - Loop renders links as <span role="link"> with the destination in the
+    `title` attribute, not as <a href>.
+  - Loop associates list items with their list via `aria-owns`, and renders a
+    duplicate `aria-hidden` copy of those items.
+  - The class names for headings, callouts, code blocks, tasks, dividers,
+    table rows and cells, and the collapse-button container.
+  - The page title selectors, including [data-automation-type="Title"].
+
+loopmark's architecture is deliberately different: loopd is a DevTools console
+script that loads the remark ecosystem from esm.sh at runtime. loopmark makes
+zero network requests and ships a hand-written converter with no runtime
+dependencies. See SECURITY.md for why that distinction is the whole point.
+
+--------------------------------------------------------------------------------
+MIT License (loopd)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

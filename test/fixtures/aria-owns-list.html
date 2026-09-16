@@ -1,0 +1,9 @@
+<!-- Loop associates list items with their list via aria-owns rather than DOM
+     nesting, and renders a duplicate aria-hidden copy of the same items. -->
+<div class="scriptor-pageContainer">
+  <ul role="list" aria-owns="item-a item-b"></ul>
+  <ul aria-hidden="true">
+    <li id="item-a" role="listitem"><div class="scriptor-paragraph">Owned one</div></li>
+    <li id="item-b" role="listitem"><div class="scriptor-paragraph">Owned two</div></li>
+  </ul>
+</div>

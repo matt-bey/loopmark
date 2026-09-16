@@ -8,6 +8,8 @@
 
 import {
   CONTENT_ROOT_CANDIDATES,
+  MIN_PARAGRAPHS_FOR_ROOT,
+  PARAGRAPH_SELECTOR,
   DANGEROUS_CLICK_PATTERNS,
   EXPANDABLE_ALLOWLIST,
   FORCE_RENDER,
@@ -122,6 +124,20 @@ export function pierceQuerySelector(root: Node, selector: string): Element | nul
   return pierceQuerySelectorAll(root, selector)[0] ?? null;
 }
 
+/**
+ * `getElementById` that descends into open shadow roots.
+ *
+ * Needed for `aria-owns`, which references items by ID that may live in a
+ * different shadow tree than the list that owns them.
+ */
+export function pierceGetElementById(root: Node, id: string): Element | null {
+  if (!id) return null;
+  // Escape for use inside an attribute selector; CSS.escape is not available
+  // in every context a bookmarklet lands in.
+  const escaped = id.replace(/["\\]/g, '\\$&');
+  return pierceQuerySelector(root, `[id="${escaped}"]`);
+}
+
 /** Visible text of `node` including text inside open shadow roots. */
 export function composedText(node: Node): string {
   let out = '';
@@ -189,10 +205,37 @@ export function findContentRoot(doc: Document = document): ContentRootResult {
     return { root: best, strategy: candidate.name, rejected };
   }
 
+  // Last-ditch: climb from the first paragraph block to the nearest ancestor
+  // holding several of them. This survives a wholesale rename of the page
+  // container as long as the paragraph class itself holds.
+  const paragraphs = pierceQuerySelectorAll(doc, PARAGRAPH_SELECTOR);
+  if (paragraphs.length >= MIN_PARAGRAPHS_FOR_ROOT && paragraphs[0]) {
+    let parent = composedParent(paragraphs[0]);
+    while (parent && parent !== doc.body) {
+      if (pierceQuerySelectorAll(parent, PARAGRAPH_SELECTOR).length >= MIN_PARAGRAPHS_FOR_ROOT) {
+        return { root: parent, strategy: 'paragraph-ancestor', rejected };
+      }
+      parent = composedParent(parent);
+    }
+  }
+  rejected.push(`paragraph-ancestor: found ${paragraphs.length} paragraph blocks`);
+
   // Nothing matched. `body` always "works" and always produces noisy output,
   // which is the correct failure mode: degraded, not blank.
   rejected.push('all candidates exhausted');
   return { root: doc.body, strategy: 'fallback-body', rejected };
+}
+
+/**
+ * The parent of `el` in the composed tree.
+ *
+ * `parentElement` is null at the top of a shadow tree; the shadow host is the
+ * real rendered parent, so step across the boundary.
+ */
+export function composedParent(el: Element): Element | null {
+  if (el.parentElement) return el.parentElement;
+  const root = el.getRootNode();
+  return root instanceof ShadowRoot ? root.host : null;
 }
 
 /** Best-effort page title, falling back to `document.title`. */

@@ -1,0 +1,54 @@
+<!-- Synthetic reproduction of Microsoft Loop's "Scriptor" editor markup.
+     Hand-written from the SHAPE of the real markup; no real content. -->
+<div class="scriptor-pageContainer">
+
+  <div class="scriptor-pageHeader">
+    <span>Cover image, author chips and presence avatars live here.</span>
+  </div>
+
+  <div class="scriptor-title" data-automation-type="Title">Design Notes</div>
+
+  <div class="scriptor-collapsibleHeading" role="heading" aria-level="2">Background</div>
+
+  <div class="scriptor-paragraph">
+    <div class="scriptor-line">First line of the paragraph</div>
+    <div class="scriptor-line">second line of the same paragraph.</div>
+  </div>
+
+  <div class="scriptor-paragraph">
+    See
+    <span class="scriptor-hyperlink" role="link"
+          title="https://example.invalid/spec&#10;Click to follow link">the spec</span>
+    and
+    <span class="scriptor-hyperlink" role="link"
+          title="https://example.invalid/rfc">the RFC</span>.
+  </div>
+
+  <div class="scriptor-paragraph">
+    A tooltip is <span title="Not a URL, just a tooltip">not a link</span>.
+  </div>
+
+  <div class="scriptor-paragraph">
+    Config lives in <span class="scriptor-inlineCode">settings.json</span>.
+  </div>
+
+  <div class="scriptor-callout scriptor-component-block-callout" data-type="warning">
+    <div class="scriptor-paragraph">Rotate the key before the cutover.</div>
+  </div>
+
+  <div class="scriptor-codeBlock" data-language="bash">
+    <div class="scriptor-line">echo one</div>
+  </div>
+
+  <div class="scriptor-divider"></div>
+
+  <div class="scriptor-task">
+    <input type="checkbox" checked>
+    <div class="scriptor-paragraph">Ship the probe</div>
+  </div>
+  <div class="scriptor-task">
+    <input type="checkbox">
+    <div class="scriptor-paragraph">Verify selectors</div>
+  </div>
+
+</div>

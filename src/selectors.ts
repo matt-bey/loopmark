@@ -2,13 +2,22 @@
  * ALL Loop-specific DOM knowledge lives in this file.
  *
  * When Microsoft ships a UI change and loopmark stops working, this should be
- * the only file that needs editing. Everything here is a guess about someone
- * else's unversioned, undocumented markup -- treat each entry as expiring.
+ * the only file that needs editing. Everything here is a description of
+ * someone else's unversioned, undocumented markup -- treat each entry as
+ * expiring.
  *
- * CONVENTION: every selector carries
+ * Loop's editor is internally called **Scriptor**, and it prefixes its class
+ * names accordingly (`scriptor-paragraph`, `scriptor-pageContainer`, ...).
+ * Class names are matched case-insensitively and by substring wherever
+ * possible, because Loop ships hashed/suffixed variants of them.
+ *
+ * CONVENTION: every entry carries
  *   - what it targets
- *   - VERIFIED <date> if confirmed against a live page via spikes/probe.js
- *   - UNVERIFIED if it is a structural guess awaiting probe output
+ *   - VERIFIED <date> <how>  if confirmed against live markup
+ *   - UNVERIFIED             if it is a structural guess
+ *
+ * Selector knowledge marked "via loopd" was derived from the MIT-licensed
+ * github.com/stuffbucket/loopd. See NOTICE.
  */
 
 // ---------------------------------------------------------------------------
@@ -16,11 +25,11 @@
 // ---------------------------------------------------------------------------
 
 /**
- * Hosts on which the bookmarklet will run without complaint.
+ * Hosts on which the bookmarklet runs without complaint.
  * Add tenant-specific hosts here; matching is exact or subdomain-suffix.
  */
 export const LOOP_HOSTS: readonly string[] = [
-  // The current Loop web app. VERIFIED 2026-09-16 (from the user's own URLs).
+  // VERIFIED 2026-09-16 -- the current Loop web app.
   'loop.cloud.microsoft',
 ];
 
@@ -37,37 +46,44 @@ export function isLoopHost(host: string): boolean {
 /**
  * Ordered candidate selectors for the page content container.
  *
- * `findContentRoot` tries these in order and keeps the first that clears a
- * minimum-content threshold, so specific-and-fragile can safely sit above
- * generic-and-stable: if the specific one disappears, the generic one catches.
- *
- * To add a new candidate after a Loop UI change: add one entry. That's the
- * whole maintenance story.
+ * Tried in order; the first that clears a minimum-content threshold wins, so
+ * specific-and-fragile can safely sit above generic-and-stable. To recover
+ * from a Loop UI change, add one entry.
  */
 export const CONTENT_ROOT_CANDIDATES: readonly { name: string; selector: string }[] = [
-  // Loop's canvas surface. UNVERIFIED -- fill in exact value from probe output.
-  { name: 'loop-canvas-testid', selector: '[data-testid="canvas"]' },
-  { name: 'loop-page-canvas', selector: '[class*="pageCanvas" i]' },
-  { name: 'loop-canvas-class', selector: '[class*="canvas" i][contenteditable]' },
+  // VERIFIED 2026-09-16 via loopd -- Scriptor's own page containers.
+  { name: 'scriptor-page-container', selector: 'div.scriptor-pageContainer' },
+  { name: 'page-container-fuzzy', selector: 'div[class*="pageContainer" i]' },
+  { name: 'scriptor-first-page', selector: '.scriptor-pageFrame.scriptor-firstPage' },
+  { name: 'scriptor-page-body', selector: '.scriptor-pageBody' },
+  { name: 'scriptor-page-frame', selector: '.scriptor-pageFrame' },
+  { name: 'scriptor-canvas', selector: '.scriptor-canvas' },
+  // Loop components embedded in a host page (Teams, Outlook, a Loop workspace).
+  { name: 'component-part-host', selector: '[id^="componentPartHostingElementId"]' },
 
-  // The Fluid editor surface. Loop pages are editable documents, so the
-  // contenteditable region is the single most reliable structural signal.
-  // UNVERIFIED but very likely.
+  // Structural fallbacks. Loop pages are editable documents, so the
+  // contenteditable region is a strong signal independent of class names.
   { name: 'main-contenteditable', selector: '[role="main"] [contenteditable="true"]' },
   { name: 'contenteditable-true', selector: '[contenteditable="true"]' },
   { name: 'contenteditable-any', selector: '[contenteditable]:not([contenteditable="false"])' },
 
-  // ARIA landmarks. Slowest-moving signals; these are the safety net.
+  // ARIA landmarks. Slowest-moving signals; the safety net.
   { name: 'aria-document', selector: '[role="document"]' },
-  { name: 'aria-textbox', selector: '[role="textbox"]' },
   { name: 'aria-main', selector: '[role="main"]' },
   { name: 'main-element', selector: 'main' },
 ];
 
 /**
- * Minimum visible characters a candidate must contain to be accepted as the
- * content root. Below this we assume we matched a toolbar or an empty shell
- * and fall through to the next candidate.
+ * Last-ditch strategy when every candidate fails: find the nearest ancestor
+ * that contains several paragraph blocks. Survives a wholesale class rename
+ * of the page container as long as the paragraph class holds.
+ */
+export const PARAGRAPH_SELECTOR = '.scriptor-paragraph, [class*="scriptor-paragraph" i]';
+export const MIN_PARAGRAPHS_FOR_ROOT = 3;
+
+/**
+ * Minimum visible characters a candidate must contain to be accepted. Below
+ * this we assume we matched a toolbar or an empty shell and fall through.
  */
 export const MIN_CONTENT_ROOT_CHARS = 40;
 
@@ -75,11 +91,11 @@ export const MIN_CONTENT_ROOT_CHARS = 40;
 // Page title
 // ---------------------------------------------------------------------------
 
-/** Ordered candidates for the page title, most specific first. UNVERIFIED. */
+/** Ordered title candidates. VERIFIED 2026-09-16 via loopd. */
 export const TITLE_CANDIDATES: readonly string[] = [
-  '[data-testid="page-title"]',
+  '.scriptor-pageTitle',
+  '[data-automation-type="Title"]',
   '[class*="pageTitle" i]',
-  '[class*="titleInput" i]',
   '[role="main"] [role="heading"][aria-level="1"]',
   'h1',
 ];
@@ -90,10 +106,20 @@ export const TITLE_CANDIDATES: readonly string[] = [
 
 /**
  * Subtrees that are UI furniture rather than page content. Matched elements
- * (and their descendants) are skipped entirely by the converter.
+ * and their descendants are skipped entirely.
  */
 export const EXCLUDE_SELECTORS: readonly string[] = [
-  // Editor affordances that render inside the content region.
+  // VERIFIED 2026-09-16 via loopd -- the page header carries the cover image,
+  // author chips and presence avatars, none of which are document content.
+  '.scriptor-pageHeader',
+  '[class*="scriptor-pageHeader" i]',
+
+  // The page title is read separately by `findTitle` and rendered as the
+  // document's `# ` heading, so including it in the body duplicates it.
+  '.scriptor-pageTitle',
+  '[data-automation-type="Title"]',
+
+  // Editor affordances rendered inside the content region.
   '[data-testid="comment-thread"]',
   '[class*="commentThread" i]',
   '[class*="Toolbar" i]',
@@ -108,52 +134,63 @@ export const EXCLUDE_SELECTORS: readonly string[] = [
   '[role="navigation"]',
   '[role="complementary"]',
   '[role="search"]',
-  // Loop renders a persistent "+" / drag handle rail beside each block.
+
+  // The "+" / drag rail beside each block.
   '[class*="blockHandle" i]',
   '[class*="dragHandle" i]',
   '[data-testid="block-handle"]',
+
   // Presence cursors and collaborator avatars.
   '[class*="presence" i]',
   '[class*="collabCursor" i]',
-  // Anything explicitly hidden from assistive tech is also not content.
+
+  /**
+   * IMPORTANT: Loop renders a duplicate, `aria-hidden` copy of list items that
+   * belong to an earlier list via `aria-owns`. Excluding aria-hidden subtrees
+   * is what stops every bullet in an owned list appearing twice.
+   * VERIFIED 2026-09-16 via loopd.
+   */
   '[aria-hidden="true"]',
   '[hidden]',
+
   // loopmark's own overlay, so re-running does not capture the previous run.
   'loopmark-overlay',
 ];
 
 // ---------------------------------------------------------------------------
-// Disclosure expansion (Phase 1 `expandCollapsed`)
+// Disclosure expansion
 // ---------------------------------------------------------------------------
 
 /**
  * ALLOWLIST -- the only things loopmark will ever click.
  *
- * Clicking in a live collaborative editor is the single riskiest thing this
- * tool does, so the rule is narrow: an element must match one of these AND
- * carry `aria-expanded="false"`. We never click a generic button, never click
- * anything matching DANGEROUS_CLICK_PATTERNS, and never click twice.
+ * Clicking in a live collaborative editor is the riskiest thing this tool
+ * does, so the rule is narrow: an element must match one of these AND carry
+ * `aria-expanded="false"` AND survive `DANGEROUS_CLICK_PATTERNS`.
  */
 export const EXPANDABLE_ALLOWLIST: readonly string[] = [
+  // VERIFIED 2026-09-16 via loopd -- Scriptor's collapsed-heading toggle.
+  '[class*="scriptor-collapseButtonContainer" i][aria-expanded="false"]',
+
   // Native disclosure.
   'summary[aria-expanded="false"]',
-  // ARIA disclosure buttons for collapsed headings / sections.
+
+  // Generic ARIA disclosure buttons.
   'button[aria-expanded="false"][class*="collaps" i]',
   'button[aria-expanded="false"][class*="expand" i]',
   'button[aria-expanded="false"][class*="chevron" i]',
   'button[aria-expanded="false"][class*="disclosure" i]',
   '[role="button"][aria-expanded="false"][class*="collaps" i]',
   '[role="button"][aria-expanded="false"][class*="expand" i]',
-  // Loop's "Show more" affordance on truncated blocks. UNVERIFIED.
-  '[data-testid="show-more"][aria-expanded="false"]',
+
   // Collapsed outline headings expose aria-expanded on the heading itself.
   '[role="heading"][aria-expanded="false"]',
 ];
 
 /**
- * Hard veto. If an element's text, aria-label, or class matches any of these,
- * it is never clicked regardless of the allowlist. Defense in depth against a
- * future allowlist entry accidentally widening to a destructive control.
+ * Hard veto. If an element's text, aria-label, or class matches any of these
+ * it is never clicked, regardless of the allowlist. Defense in depth against a
+ * future allowlist entry widening to reach a destructive control.
  */
 export const DANGEROUS_CLICK_PATTERNS: readonly RegExp[] = [
   /delete|remove|trash|discard/i,
@@ -169,22 +206,79 @@ export const DANGEROUS_CLICK_PATTERNS: readonly RegExp[] = [
 export const MAX_EXPAND_CLICKS = 200;
 
 // ---------------------------------------------------------------------------
-// Virtualization (Phase 1 `forceRender`)
+// Virtualization
 // ---------------------------------------------------------------------------
 
 export const FORCE_RENDER = {
-  /** Number of scroll positions to visit between top and bottom. */
+  /** Scroll positions to visit between top and bottom. */
   steps: 8,
-  /** Milliseconds to wait after each scroll for React to commit new rows. */
+  /** Milliseconds to wait after each scroll for new rows to commit. */
   settleMs: 120,
   /** Extra wait at the bottom, where the largest batch usually renders. */
   bottomSettleMs: 350,
-  /** Abort scrolling after this long, so a huge page cannot hang the click. */
+  /** Abort after this long, so a huge page degrades rather than hanging. */
   budgetMs: 8000,
 } as const;
 
 // ---------------------------------------------------------------------------
-// Loop component detection (Phase 2)
+// Block-level class patterns
+//
+// Loop expresses most block types through class names rather than tags, so
+// these are the real classifiers. All VERIFIED 2026-09-16 via loopd.
+// ---------------------------------------------------------------------------
+
+/** A heading, even when the tag is a plain div. */
+export const HEADING_CLASS_PATTERN =
+  /scriptor-collapsibleHeading|scriptor-heading|scriptor-title/i;
+
+/** Some headings encode their rank in the class, e.g. `...heading2...`. */
+export const HEADING_LEVEL_CLASS_PATTERN = /heading\s*(\d)/i;
+
+/** Loop's paragraph block. Its inner `scriptor-line` children are soft lines. */
+export const PARAGRAPH_CLASS_PATTERN = /scriptor-paragraph/i;
+
+/** A checklist / task item. */
+export const TASK_CLASS_PATTERN = /scriptor-task|scriptor-checkbox/i;
+
+/** Callout blocks, mapped to GitHub Alerts. */
+export const CALLOUT_CLASS_PATTERN =
+  /scriptor-callout|scriptor-infoBlock|scriptor-highlightBlock|scriptor-component-block-callout|scriptor-block-callout/i;
+
+/** Fenced code blocks. */
+export const CODE_BLOCK_CLASS_PATTERN = /scriptor-codeBlock|scriptor-code-editor|code-snippet/i;
+
+/** Inline code spans. */
+export const INLINE_CODE_CLASS_PATTERN = /scriptor-inlineCode/i;
+
+/** Horizontal rules. */
+export const DIVIDER_CLASS_PATTERN = /scriptor-divider|scriptor-horizontalRule/i;
+
+/** Table rows and cells, for tables rendered without `<table>` tags. */
+export const TABLE_ROW_CLASS_PATTERN = /scriptor-tableRow/i;
+export const TABLE_CELL_CLASS_PATTERN = /scriptor-tableCell/i;
+
+// ---------------------------------------------------------------------------
+// Links
+// ---------------------------------------------------------------------------
+
+/**
+ * Loop does NOT use `<a href>` for links.
+ *
+ * It renders `<span class="scriptor-hyperlink" role="link" title="...">`, with
+ * the destination stored in the `title` attribute in the form:
+ *
+ *     https://example.invalid/page\nClick to follow link
+ *
+ * Missing this means every URL on the page is silently dropped while the
+ * output still looks plausible. VERIFIED 2026-09-16 via loopd.
+ */
+export const LINK_CLASS_PATTERN = /scriptor-hyperlink/i;
+
+/** Trailing instruction text appended to the `title` attribute of a link. */
+export const LINK_TITLE_SUFFIX = /\s*\n\s*click to follow link\s*$/i;
+
+// ---------------------------------------------------------------------------
+// Loop component detection
 // ---------------------------------------------------------------------------
 
 /**
@@ -197,7 +291,6 @@ export const COMPONENT_SELECTORS: readonly { kind: string; selector: string }[] 
   { kind: 'loop-progress-tracker', selector: '[data-testid="progress-tracker"]' },
   { kind: 'loop-kanban', selector: '[data-testid="kanban-board"]' },
   { kind: 'loop-component', selector: '[data-loop-component]' },
-  { kind: 'loop-component', selector: '[class*="loopComponent" i]' },
 ];
 
 /** Person chips / @mentions, flattened to their display name. UNVERIFIED. */
@@ -209,16 +302,21 @@ export const MENTION_SELECTORS: readonly string[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Callout -> GitHub Alert mapping (Phase 2)
+// Callout -> GitHub Alert mapping
 // ---------------------------------------------------------------------------
 
 /**
- * Loop callouts carry their type in a class or data attribute. Ordered because
- * the first match wins; put narrower patterns first.
+ * Matched against the element's class list plus its `data-type` /
+ * `data-callout-type` attributes. Ordered: the first match wins, so narrower
+ * patterns come first.
  */
-export const CALLOUT_PATTERNS: readonly { pattern: RegExp; alert: 'NOTE' | 'TIP' | 'IMPORTANT' | 'WARNING' | 'CAUTION' }[] = [
+export const CALLOUT_PATTERNS: readonly {
+  pattern: RegExp;
+  alert: 'NOTE' | 'TIP' | 'IMPORTANT' | 'WARNING' | 'CAUTION';
+}[] = [
   { pattern: /danger|error|critical|blocker/i, alert: 'CAUTION' },
-  { pattern: /warn|caution|risk/i, alert: 'WARNING' },
+  { pattern: /caution/i, alert: 'CAUTION' },
+  { pattern: /warn|risk/i, alert: 'WARNING' },
   { pattern: /important|key|highlight/i, alert: 'IMPORTANT' },
   { pattern: /tip|hint|success|idea/i, alert: 'TIP' },
   { pattern: /note|info|callout/i, alert: 'NOTE' },

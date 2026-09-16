@@ -8,12 +8,24 @@
  * No dependencies, at build time or run time.
  */
 
-import { composedChildren, composedText } from './acquire.js';
+import { composedChildren, composedText, pierceGetElementById } from './acquire.js';
 import {
+  CALLOUT_CLASS_PATTERN,
   CALLOUT_PATTERNS,
+  CODE_BLOCK_CLASS_PATTERN,
   COMPONENT_SELECTORS,
+  DIVIDER_CLASS_PATTERN,
   EXCLUDE_SELECTORS,
+  HEADING_CLASS_PATTERN,
+  HEADING_LEVEL_CLASS_PATTERN,
+  INLINE_CODE_CLASS_PATTERN,
+  LINK_CLASS_PATTERN,
+  LINK_TITLE_SUFFIX,
   MENTION_SELECTORS,
+  PARAGRAPH_CLASS_PATTERN,
+  TABLE_CELL_CLASS_PATTERN,
+  TABLE_ROW_CLASS_PATTERN,
+  TASK_CLASS_PATTERN,
 } from './selectors.js';
 import type {
   AlertKind,
@@ -93,11 +105,18 @@ function componentKind(el: Element): string | null {
   return null;
 }
 
+/** `className` is an SVGAnimatedString on SVG elements, not a string. */
+export function classOf(el: Element): string {
+  const value = (el as HTMLElement).className;
+  return typeof value === 'string' ? value : (el.getAttribute('class') ?? '');
+}
+
 const attrBag = (el: Element): string =>
   [
-    typeof el.className === 'string' ? el.className : '',
+    classOf(el),
     el.getAttribute('data-testid') ?? '',
     el.getAttribute('data-callout-type') ?? '',
+    el.getAttribute('data-type') ?? '',
     el.getAttribute('aria-label') ?? '',
     el.getAttribute('role') ?? '',
   ].join(' ');
@@ -143,6 +162,8 @@ type Kind =
   | 'quote'
   | 'break'
   | 'component'
+  | 'paragraph'
+  | 'task'
   | 'container';
 
 function classify(el: Element): Kind {
@@ -151,19 +172,40 @@ function classify(el: Element): Kind {
   if (excluded(el)) return 'skip';
 
   const role = (el.getAttribute('role') ?? '').toLowerCase();
+  const cls = classOf(el);
 
-  // Headings first, and by ARIA before tag name. This is the fix for Loop
-  // emitting headings as list items: role wins over ancestry.
-  if (role === 'heading' || /^H[1-6]$/.test(tag)) return 'heading';
+  // Headings first, and by ARIA/class before tag name. This is the fix for
+  // Loop emitting headings as list items: role wins over ancestry.
+  if (
+    role === 'heading' ||
+    /^H[1-6]$/.test(tag) ||
+    HEADING_CLASS_PATTERN.test(cls) ||
+    (el.getAttribute('data-automation-type') ?? '').toLowerCase().includes('heading')
+  ) {
+    return 'heading';
+  }
 
   if (componentKind(el)) return 'component';
   if (isMention(el)) return 'inline';
 
-  if (tag === 'PRE') return 'code';
-  if (tag === 'HR' || role === 'separator') return 'break';
+  if (tag === 'PRE' || CODE_BLOCK_CLASS_PATTERN.test(cls)) return 'code';
+  if (tag === 'HR' || role === 'separator' || DIVIDER_CLASS_PATTERN.test(cls)) return 'break';
   if (tag === 'TABLE' || role === 'table' || role === 'grid') return 'table';
+  // A Scriptor table container, but never a row or a cell. UNVERIFIED.
+  if (
+    /scriptor-table/i.test(cls) &&
+    !TABLE_ROW_CLASS_PATTERN.test(cls) &&
+    !TABLE_CELL_CLASS_PATTERN.test(cls)
+  ) {
+    return 'table';
+  }
   if (tag === 'UL' || tag === 'OL' || tag === 'MENU' || role === 'list') return 'list';
-  if (tag === 'BLOCKQUOTE' || role === 'note' || isCalloutish(el)) return 'quote';
+  if (tag === 'BLOCKQUOTE' || role === 'note' || CALLOUT_CLASS_PATTERN.test(cls) || isCalloutish(el)) {
+    return 'quote';
+  }
+  // A task item that is not inside a <ul>; merged into a neighbouring list.
+  if (TASK_CLASS_PATTERN.test(cls)) return 'task';
+  if (PARAGRAPH_CLASS_PATTERN.test(cls)) return 'paragraph';
 
   if (INLINE_TAGS.has(tag)) return 'inline';
   return 'container';
@@ -192,6 +234,12 @@ function headingLevel(el: Element): HeadingLevel {
   }
   const m = /^H([1-6])$/.exec(el.tagName.toUpperCase());
   if (m?.[1]) return parseInt(m[1], 10) as HeadingLevel;
+  // Some Loop headings encode their rank in the class, e.g. `...heading2...`.
+  const fromClass = HEADING_LEVEL_CLASS_PATTERN.exec(classOf(el));
+  if (fromClass?.[1]) {
+    const n = parseInt(fromClass[1], 10);
+    if (n >= 1 && n <= 6) return n as HeadingLevel;
+  }
   return 3; // A heading of unknown rank is more likely a subsection than a title.
 }
 
@@ -254,6 +302,25 @@ function styleSaysStrike(el: Element): boolean {
   );
 }
 
+/**
+ * Find a link's destination.
+ *
+ * Loop does not use `<a href>`. It renders
+ * `<span class="scriptor-hyperlink" role="link" title="URL\nClick to follow link">`,
+ * so the destination has to be recovered from the `title` attribute. Missing
+ * this drops every URL on the page while the output still looks plausible.
+ */
+export function resolveHref(el: Element): string {
+  const direct = el.getAttribute('href') ?? el.getAttribute('data-href') ?? '';
+  if (direct) return direct;
+
+  const title = (el.getAttribute('title') ?? '').replace(LINK_TITLE_SUFFIX, '').trim();
+  const first = (title.split('\n')[0] ?? '').trim();
+  // Only accept something that actually looks like a destination -- a `title`
+  // is a tooltip on most elements, and tooltips are not links.
+  return /^(https?:\/\/|mailto:|tel:|\/)/i.test(first) ? first : '';
+}
+
 interface Ctx {
   diag: Diagnostics;
   imageUrls: string[];
@@ -298,16 +365,22 @@ function toInline(node: Node, ctx: Ctx): Inline[] {
       return name ? [{ type: 'mention', name }] : [];
     }
 
-    if (tag === 'A') {
-      const href = node.getAttribute('href') ?? '';
+    const cls = classOf(node);
+    const role = (node.getAttribute('role') ?? '').toLowerCase();
+
+    if (tag === 'A' || role === 'link' || LINK_CLASS_PATTERN.test(cls)) {
+      const href = resolveHref(node);
       const children = inlineChildren(node, ctx);
       if (!href) return children;
-      // An anchor with no text still carries information: the renderer emits
-      // the bare URL rather than dropping the link entirely.
+      // A link with no text still carries information: the renderer emits the
+      // bare URL rather than dropping it entirely.
       return [{ type: 'link', href, children }];
     }
 
-    if (tag === 'CODE' || tag === 'KBD' || tag === 'SAMP' || tag === 'TT') {
+    if (
+      tag === 'CODE' || tag === 'KBD' || tag === 'SAMP' || tag === 'TT' ||
+      INLINE_CODE_CLASS_PATTERN.test(cls)
+    ) {
       const value = composedText(node).replace(/\s+/g, ' ').trim();
       return value ? [{ type: 'code', value }] : [];
     }
@@ -438,6 +511,24 @@ export function collectBlocks(el: Node, ctx: Ctx): Block[] {
             blocks: collectBlocks(child, ctx),
           });
           break;
+        case 'paragraph':
+          out.push(...buildParagraph(child, ctx));
+          break;
+        case 'task': {
+          const item: ListItem = {
+            checked: checkedState(child) ?? false,
+            blocks: collectBlocks(child, ctx),
+          };
+          // Loop renders standalone task items as siblings rather than inside
+          // a <ul>, so merge each into the run of tasks already in progress.
+          const previous = out[out.length - 1];
+          if (previous && previous.type === 'list' && !previous.ordered) {
+            previous.items.push(item);
+          } else {
+            out.push({ type: 'list', ordered: false, start: 1, items: [item] });
+          }
+          break;
+        }
         case 'container': {
           const tag = child.tagName.toUpperCase();
           if (!KNOWN_CONTAINERS.has(tag)) {
@@ -460,21 +551,84 @@ export function collectBlocks(el: Node, ctx: Ctx): Block[] {
   }
 }
 
+/**
+ * Build a Loop paragraph block.
+ *
+ * A `scriptor-paragraph` wraps one or more `scriptor-line` child divs. Treating
+ * each line as its own paragraph over-splits prose; concatenating them without
+ * a separator silently joins words across lines ("endbegin"). We join them with
+ * a Markdown hard break, which is correct for hard lines and harmless for soft
+ * ones.
+ */
+export function buildParagraph(el: Element, ctx: Ctx): Block[] {
+  const BLOCK_KINDS: Kind[] = ['list', 'table', 'code', 'quote', 'heading', 'component', 'task'];
+  const kids = composedChildren(el).filter(isElement);
+
+  // A paragraph that actually contains block content (a nested list, say) is
+  // not a paragraph -- fall back to the generic walk.
+  if (kids.some((kid) => BLOCK_KINDS.includes(classify(kid)))) {
+    return collectBlocks(el, ctx);
+  }
+
+  const children: Inline[] = [];
+  for (const kid of composedChildren(el)) {
+    if (isElement(kid) && classify(kid) === 'container') {
+      // Only break between lines that actually have content. Pretty-printed
+      // markup puts a whitespace text node before the first line, and treating
+      // that as content emits a leading stray hard break.
+      if (inlineIsEmpty(children)) children.length = 0;
+      else children.push({ type: 'break' });
+      children.push(...inlineChildren(kid, ctx));
+      continue;
+    }
+    children.push(...toInline(kid, ctx));
+  }
+
+  const trimmed = trimInline(children);
+  if (trimmed.length === 0 || inlineIsEmpty(trimmed)) return [];
+  if (trimmed.length === 1 && trimmed[0]!.type === 'image') {
+    const img = trimmed[0] as Extract<Inline, { type: 'image' }>;
+    return [{ type: 'image', alt: img.alt, src: img.src }];
+  }
+  return [{ type: 'paragraph', children: trimmed }];
+}
+
 // ---------------------------------------------------------------------------
 // Lists
 // ---------------------------------------------------------------------------
 
 function listItemElements(listEl: Element): Element[] {
+  /**
+   * Loop associates list items with their list through `aria-owns` -- a
+   * space-separated list of element IDs -- rather than DOM nesting. A
+   * children-only walk finds an empty list. Loop also renders a duplicate
+   * `aria-hidden` copy of those items, which `EXCLUDE_SELECTORS` drops so
+   * they are not counted twice.
+   */
+  const owns = listEl.getAttribute('aria-owns');
+  if (owns) {
+    const owned: Element[] = [];
+    for (const id of owns.split(/\s+/)) {
+      const el = pierceGetElementById(listEl.ownerDocument ?? document, id);
+      if (el && !excluded(el)) owned.push(el);
+    }
+    if (owned.length > 0) return owned;
+  }
+
   const items: Element[] = [];
   for (const child of composedChildren(listEl)) {
     if (!isElement(child)) continue;
     if (SKIP_TAGS.has(child.tagName.toUpperCase()) || excluded(child)) continue;
     const role = (child.getAttribute('role') ?? '').toLowerCase();
-    if (child.tagName.toUpperCase() === 'LI' || role === 'listitem') {
+    if (
+      child.tagName.toUpperCase() === 'LI' ||
+      role === 'listitem' ||
+      TASK_CLASS_PATTERN.test(classOf(child))
+    ) {
       items.push(child);
       continue;
     }
-    // Some editors wrap each <li> in a positioning div. Look one level in.
+    // Some editors wrap each item in a positioning div. Look one level in.
     if (role === 'presentation' || role === 'none' || child.tagName.toUpperCase() === 'DIV') {
       items.push(...listItemElements(child));
     }
@@ -491,18 +645,31 @@ function checkedState(el: Element): boolean | null {
   const role = (el.getAttribute('role') ?? '').toLowerCase();
   if (role === 'checkbox') return false;
 
-  for (const child of composedChildren(el)) {
-    if (!isElement(child)) continue;
-    const tag = child.tagName.toUpperCase();
-    if (tag === 'INPUT' && child.getAttribute('type') === 'checkbox') {
-      return (child as HTMLInputElement).checked || child.hasAttribute('checked');
+  // Depth-limited rather than a full subtree scan: the checkbox sits within a
+  // couple of wrappers, and an unbounded search per list item would be
+  // quadratic on a nested list.
+  const search = (node: Element, depth: number): boolean | null => {
+    if (depth > 3) return null;
+    for (const child of composedChildren(node)) {
+      if (!isElement(child)) continue;
+      const tag = child.tagName.toUpperCase();
+      if (tag === 'INPUT' && child.getAttribute('type') === 'checkbox') {
+        return (child as HTMLInputElement).checked || child.hasAttribute('checked');
+      }
+      const nested = child.getAttribute('aria-checked');
+      if (nested === 'true') return true;
+      if (nested === 'false') return false;
+      if ((child.getAttribute('role') ?? '').toLowerCase() === 'checkbox') return false;
+      const deeper = search(child, depth + 1);
+      if (deeper !== null) return deeper;
     }
-    const nested = child.getAttribute('aria-checked');
-    if (nested === 'true') return true;
-    if (nested === 'false') return false;
-    if ((child.getAttribute('role') ?? '').toLowerCase() === 'checkbox') return false;
-  }
-  return null;
+    return null;
+  };
+
+  const found = search(el, 0);
+  if (found !== null) return found;
+  // A Loop task item with no discoverable checkbox is still a checklist item.
+  return TASK_CLASS_PATTERN.test(classOf(el)) ? false : null;
 }
 
 /**
@@ -556,6 +723,10 @@ export function buildList(listEl: Element, ctx: Ctx): Block[] {
   }
 
   flushBucket();
+
+  // Never swallow a list whose items we failed to recognize -- degraded
+  // output beats missing output.
+  if (out.length === 0) return collectBlocks(listEl, ctx);
   return out;
 }
 
@@ -571,7 +742,7 @@ function tableRows(el: Element): Element[] {
       if (SKIP_TAGS.has(child.tagName.toUpperCase()) || excluded(child)) continue;
       const tag = child.tagName.toUpperCase();
       const role = (child.getAttribute('role') ?? '').toLowerCase();
-      if (tag === 'TR' || role === 'row') {
+      if (tag === 'TR' || role === 'row' || TABLE_ROW_CLASS_PATTERN.test(classOf(child))) {
         rows.push(child);
         continue;
       }
@@ -590,7 +761,12 @@ function rowCells(row: Element): Element[] {
       if (SKIP_TAGS.has(child.tagName.toUpperCase()) || excluded(child)) continue;
       const tag = child.tagName.toUpperCase();
       const role = (child.getAttribute('role') ?? '').toLowerCase();
-      if (tag === 'TD' || tag === 'TH' || role === 'cell' || role === 'gridcell' || role === 'columnheader' || role === 'rowheader') {
+      if (
+        tag === 'TD' || tag === 'TH' ||
+        role === 'cell' || role === 'gridcell' ||
+        role === 'columnheader' || role === 'rowheader' ||
+        TABLE_CELL_CLASS_PATTERN.test(classOf(child))
+      ) {
         cells.push(child);
         continue;
       }
@@ -658,10 +834,32 @@ function detectLanguage(el: Element): string | null {
   return null;
 }
 
+/**
+ * Remove the indentation the surrounding HTML added, without disturbing the
+ * code's own relative indentation.
+ */
+export function dedent(value: string): string {
+  const lines = value.split('\n');
+  let common: string | null = null;
+  for (const line of lines) {
+    if (line.trim() === '') continue;
+    const indent = /^[ \t]*/.exec(line)![0];
+    if (common === null) {
+      common = indent;
+      continue;
+    }
+    let i = 0;
+    while (i < common.length && i < indent.length && common[i] === indent[i]) i += 1;
+    common = common.slice(0, i);
+  }
+  if (!common) return value;
+  return lines.map((line) => (line.startsWith(common!) ? line.slice(common!.length) : line)).join('\n');
+}
+
 export function buildCode(el: Element): Block {
   // Deliberately NOT collapsing whitespace: it is the entire point of a code block.
   let value = composedText(el).replace(/\r\n?/g, '\n');
-  value = value.replace(/^\n+/, '').replace(/\s+$/, '');
+  value = dedent(value.replace(/^\n+/, '').replace(/[ \t]+$/gm, '')).replace(/\s+$/, '');
   return { type: 'code', lang: detectLanguage(el), value };
 }
 
