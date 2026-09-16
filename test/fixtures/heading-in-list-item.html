@@ -1,0 +1,11 @@
+<!-- The regression that matters most.
+     Loop marks headings up as list items; a naive walk emits "- ## Heading".
+     Expected: headings are promoted OUT of the list, splitting it. -->
+<div role="main">
+  <ul>
+    <li role="heading" aria-level="2">Section One</li>
+    <li>First real bullet</li>
+    <li><div role="heading" aria-level="3">Subsection</div></li>
+    <li>Second real bullet</li>
+  </ul>
+</div>

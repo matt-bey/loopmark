@@ -125,7 +125,13 @@ const KNOWN_CONTAINERS = new Set([
   'BODY', 'HTML', 'TEMPLATE', 'SLOT', 'DETAILS', 'SUMMARY', 'CENTER',
 ]);
 
-const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'HEAD', 'TITLE', 'META', 'LINK']);
+const SKIP_TAGS = new Set([
+  'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'HEAD', 'TITLE', 'META', 'LINK',
+  // Form controls carry no document text. Checkbox *state* is read directly by
+  // `checkedState`, so skipping them here loses nothing and avoids emitting an
+  // empty container for every checklist item.
+  'INPUT', 'SELECT', 'TEXTAREA', 'OPTION', 'OPTGROUP', 'PROGRESS', 'METER',
+]);
 
 type Kind =
   | 'skip'
@@ -193,35 +199,59 @@ function headingLevel(el: Element): HeadingLevel {
 // Inline conversion
 // ---------------------------------------------------------------------------
 
-function styleSaysBold(el: Element): boolean {
-  const inline = (el as HTMLElement).style?.fontWeight ?? '';
-  if (/^(bold|bolder|[6-9]00)$/.test(inline)) return true;
+function computed(el: Element): CSSStyleDeclaration | null {
   try {
-    const w = getComputedStyle(el).fontWeight;
-    return /^(bold|bolder|[6-9]00)$/.test(w);
+    return getComputedStyle(el);
   } catch {
-    return false;
+    return null;
   }
+}
+
+/**
+ * Does `el` *introduce* this formatting, as opposed to inheriting it?
+ *
+ * This distinction is load-bearing. Computed style inherits, so every <span>
+ * inside a <strong> also computes to weight 700. Checking the absolute value
+ * would wrap the same run of text once per nesting level and emit
+ * `****text****`, which no Markdown parser reads as bold. Emphasis is a
+ * *change* in formatting, so we compare against the parent.
+ */
+function introduces(
+  el: Element,
+  read: (style: CSSStyleDeclaration) => string,
+  inlineValue: string,
+  test: (value: string) => boolean,
+): boolean {
+  if (test(inlineValue)) {
+    const parent = el.parentElement ? computed(el.parentElement) : null;
+    if (!parent || !test(read(parent))) return true;
+  }
+  const own = computed(el);
+  if (!own || !test(read(own))) return false;
+  const parent = el.parentElement ? computed(el.parentElement) : null;
+  // Parent already has it -> inherited, not introduced here.
+  return !(parent && test(read(parent)));
+}
+
+const isBoldWeight = (v: string): boolean => /^(bold|bolder|[6-9]00)$/.test(v.trim());
+const isItalicStyle = (v: string): boolean => /italic|oblique/.test(v);
+const isStruck = (v: string): boolean => /line-through/.test(v);
+
+function styleSaysBold(el: Element): boolean {
+  return introduces(el, (s) => s.fontWeight, (el as HTMLElement).style?.fontWeight ?? '', isBoldWeight);
 }
 
 function styleSaysItalic(el: Element): boolean {
-  const inline = (el as HTMLElement).style?.fontStyle ?? '';
-  if (inline === 'italic' || inline === 'oblique') return true;
-  try {
-    return /italic|oblique/.test(getComputedStyle(el).fontStyle);
-  } catch {
-    return false;
-  }
+  return introduces(el, (s) => s.fontStyle, (el as HTMLElement).style?.fontStyle ?? '', isItalicStyle);
 }
 
 function styleSaysStrike(el: Element): boolean {
-  const inline = (el as HTMLElement).style?.textDecoration ?? '';
-  if (/line-through/.test(inline)) return true;
-  try {
-    return /line-through/.test(getComputedStyle(el).textDecorationLine || getComputedStyle(el).textDecoration);
-  } catch {
-    return false;
-  }
+  return introduces(
+    el,
+    (s) => s.textDecorationLine || s.textDecoration || '',
+    (el as HTMLElement).style?.textDecoration ?? '',
+    isStruck,
+  );
 }
 
 interface Ctx {
@@ -271,7 +301,9 @@ function toInline(node: Node, ctx: Ctx): Inline[] {
     if (tag === 'A') {
       const href = node.getAttribute('href') ?? '';
       const children = inlineChildren(node, ctx);
-      if (!href || children.length === 0) return children;
+      if (!href) return children;
+      // An anchor with no text still carries information: the renderer emits
+      // the bare URL rather than dropping the link entirely.
       return [{ type: 'link', href, children }];
     }
 
@@ -307,6 +339,8 @@ function inlineIsEmpty(nodes: Inline[]): boolean {
     if (n.type === 'text') return n.value.trim() !== '';
     if (n.type === 'code' || n.type === 'mention') return true;
     if (n.type === 'image') return true;
+    // A link is never empty -- worst case it renders as its bare URL.
+    if (n.type === 'link') return true;
     if (n.type === 'break') return false;
     return !inlineIsEmpty(n.children);
   });
