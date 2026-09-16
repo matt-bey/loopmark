@@ -38,6 +38,16 @@ export interface ListItem {
   checked: boolean | null;
   /** Item content. Nested lists appear here as nested `list` blocks. */
   blocks: Block[];
+  /**
+   * Nesting depth from `aria-level`, 1-based. Loop never nests lists in the
+   * DOM -- every item is its own single-item `<ul>` -- so depth arrives as a
+   * flat annotation and is folded into real nesting after collection.
+   */
+  level?: number;
+  /** Whether this item's own list is numbered, from its rendered marker. */
+  ordered?: boolean;
+  /** This item's position within its own list, from `aria-posinset`. */
+  position?: number;
 }
 
 export type Block =

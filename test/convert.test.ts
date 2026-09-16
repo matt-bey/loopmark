@@ -435,3 +435,32 @@ describe('Loop tables (real markup)', () => {
     expect(md()).not.toMatch(/\\$/m);
   });
 });
+
+describe('Loop lists (real markup)', () => {
+  const md = (): string => body(fixture('loop-list.html'));
+
+  it('merges the flat run of single-item lists into one list', () => {
+    // Loop emits one <ul> per item, which previously rendered as separate
+    // lists with a blank line between every bullet.
+    const out = md();
+    expect(out).not.toMatch(/^- Pull secure image\n\n- Hardening/m);
+    expect(out).toContain('- Pull secure image\n- Hardening and configuration\n');
+  });
+
+  it('nests by aria-level rather than DOM containment', () => {
+    const out = md();
+    expect(out).toMatch(/^ {2}1\. Install OS packages$/m);
+    expect(out).toMatch(/^ {2}2\. Install certificate$/m);
+    expect(out).toMatch(/^ {5}- Deepest note$/m);
+  });
+
+  it('detects a numbered list from its rendered marker, not an <ol>', () => {
+    // There is not a single <ol> in the fixture, exactly as in real Loop.
+    expect(fixture('loop-list.html').querySelector('ol')).toBeNull();
+    expect(md()).toContain('1. Install OS packages');
+  });
+
+  it('keeps top-level bullets at the outer level', () => {
+    expect(md()).toMatch(/^- Tag and push$/m);
+  });
+});

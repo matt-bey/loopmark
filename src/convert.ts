@@ -30,6 +30,9 @@ import {
   EOP_CLASS_PATTERN,
   VOTER_COUNT_PATTERN,
   VOTING_SELECTOR,
+  LIST_MARKER_CSS_VAR,
+  ORDERED_MARKER_PATTERN,
+  BULLET_MARKER_PATTERN,
 } from './selectors.js';
 import type {
   AlertKind,
@@ -708,10 +711,82 @@ export function collectBlocks(el: Node, ctx: Ctx): Block[] {
     }
 
     flush();
-    return out;
+    return mergeAndNestLists(out);
   } finally {
     ctx.depth -= 1;
   }
+}
+
+type ListBlock = Extract<Block, { type: 'list' }>;
+
+/** A list Loop produced: one item per `<ul>`, depth carried on the item. */
+function isLoopList(block: Block): block is ListBlock {
+  return (
+    block.type === 'list' &&
+    block.items.length > 0 &&
+    block.items.every((item) => item.level !== undefined)
+  );
+}
+
+/**
+ * Fold Loop's flat run of single-item lists back into one nested list.
+ *
+ * Loop emits every list item as its own `<ul>` sibling, so a five-bullet list
+ * arrives as five separate lists and renders with a blank line between each
+ * bullet; sub-bullets lose their indentation entirely. Consecutive Loop lists
+ * are merged, then `aria-level` is folded into real nesting.
+ */
+function mergeAndNestLists(blocks: Block[]): Block[] {
+  const merged: Block[] = [];
+  for (const block of blocks) {
+    const previous = merged[merged.length - 1];
+    if (previous && isLoopList(previous) && isLoopList(block)) {
+      previous.items.push(...block.items);
+      continue;
+    }
+    merged.push(block);
+  }
+  return merged.map(nestLoopList);
+}
+
+/** Turn a flat, `level`-annotated item list into genuinely nested lists. */
+function nestLoopList(block: Block): Block {
+  if (!isLoopList(block)) return block;
+  const items = block.items;
+  const baseLevel = items[0]!.level ?? 1;
+  if (!items.some((item) => (item.level ?? 1) > baseLevel)) return block;
+
+  interface Frame {
+    level: number;
+    list: ListBlock;
+  }
+  const root: ListBlock = { type: 'list', ordered: block.ordered, start: block.start, items: [] };
+  const stack: Frame[] = [{ level: baseLevel, list: root }];
+
+  for (const item of items) {
+    const level = item.level ?? baseLevel;
+    while (stack.length > 1 && level < stack[stack.length - 1]!.level) stack.pop();
+
+    let top = stack[stack.length - 1]!;
+    if (level > top.level) {
+      const parent = top.list.items[top.list.items.length - 1];
+      const child: ListBlock = {
+        type: 'list',
+        ordered: item.ordered === true,
+        start: item.position ?? 1,
+        items: [],
+      };
+      // An item deeper than its predecessor with no predecessor to hang off
+      // stays where it is rather than being dropped.
+      if (parent) {
+        parent.blocks.push(child);
+        stack.push({ level, list: child });
+        top = stack[stack.length - 1]!;
+      }
+    }
+    top.list.items.push(item);
+  }
+  return root;
 }
 
 /**
@@ -843,6 +918,30 @@ function checkedState(el: Element): boolean | null {
  * of copy-paste today. Promoting splits the list around the heading, which is
  * what the author actually meant.
  */
+/**
+ * Read the marker Loop renders for a list item, e.g. `"\u2022 "` or `"a. "`.
+ * Returns `null` for markup that is not Loop's.
+ */
+function loopListMarker(li: Element): string | null {
+  const style = (li as HTMLElement).style;
+  const raw = style?.getPropertyValue?.(LIST_MARKER_CSS_VAR) ?? '';
+  const marker = raw.replace(/^\s*["']|["']\s*$/g, '').trim();
+  return marker === '' ? null : marker;
+}
+
+function markerIsOrdered(marker: string | null): boolean {
+  if (marker === null) return false;
+  if (BULLET_MARKER_PATTERN.test(marker)) return false;
+  return ORDERED_MARKER_PATTERN.test(marker);
+}
+
+function ariaNumber(el: Element, attr: string): number | undefined {
+  const raw = el.getAttribute(attr);
+  if (raw === null) return undefined;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 export function buildList(listEl: Element, ctx: Ctx): Block[] {
   const ordered =
     listEl.tagName.toUpperCase() === 'OL' ||
@@ -856,7 +955,13 @@ export function buildList(listEl: Element, ctx: Ctx): Block[] {
 
   const flushBucket = (): void => {
     if (bucket.length === 0) return;
-    out.push({ type: 'list', ordered, start, items: bucket });
+    const first = bucket[0]!;
+    out.push({
+      type: 'list',
+      ordered: ordered || first.ordered === true,
+      start: first.position ?? start,
+      items: bucket,
+    });
     bucket = [];
   };
 
@@ -882,7 +987,14 @@ export function buildList(listEl: Element, ctx: Ctx): Block[] {
       continue;
     }
 
-    bucket.push({ checked: checkedState(itemEl), blocks });
+    const marker = loopListMarker(itemEl);
+    const item: ListItem = { checked: checkedState(itemEl), blocks };
+    const level = ariaNumber(itemEl, 'aria-level');
+    if (level !== undefined) item.level = level;
+    if (marker !== null) item.ordered = markerIsOrdered(marker);
+    const position = ariaNumber(itemEl, 'aria-posinset');
+    if (position !== undefined) item.position = position;
+    bucket.push(item);
   }
 
   flushBucket();

@@ -426,3 +426,24 @@ export const TABLE_HOST_SELECTOR =
 export const VOTING_SELECTOR =
   '[data-testid="voting-container-test-id"], [data-automation-type="voting" i]';
 export const VOTER_COUNT_PATTERN = /(\d+)\s+voters?/i;
+
+/**
+ * Loop renders list markers itself, via a CSS custom property on each `<li>`:
+ *
+ *   <li aria-level="2" aria-posinset="1" aria-setsize="2"
+ *       style="--scriptor-list-marker-text: 'a. '">
+ *
+ * There are no `<ol>` elements anywhere on a Loop page -- 83 `<ul>` and 0
+ * `<ol>` on the sample -- so a numbered list is only distinguishable from a
+ * bulleted one by this marker text. Nesting depth is `aria-level`, never DOM
+ * containment: every item is its own single-item `<ul>` sibling.
+ *
+ * VERIFIED 2026-09-16 against a saved Loop page.
+ */
+export const LIST_MARKER_CSS_VAR = '--scriptor-list-marker-text';
+
+/** `1.` `1)` `a.` `iv.` -- a rendered marker that implies a numbered list. */
+export const ORDERED_MARKER_PATTERN = /^(\d+|[a-z]+)[.)]$/i;
+
+/** `.scriptor-listItem-marker-bullet` and the glyphs Loop renders for bullets. */
+export const BULLET_MARKER_PATTERN = /^[\u2022\u25E6\u25AA\u25CF\u2023\u2043*+-]$/;
