@@ -90,6 +90,8 @@ export interface Diagnostics {
   expandedWidgets: number;
   /** Total elements visited in the composed-tree walk. */
   elementsVisited: number;
+  /** Inline base64 `data:` images replaced with a placeholder. */
+  droppedDataImages: number;
   /** Non-fatal problems worth telling the user about. */
   warnings: string[];
 }

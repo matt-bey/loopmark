@@ -13,6 +13,7 @@ const diagnostics = (over: Partial<Diagnostics> = {}): Diagnostics => ({
   shadowRootsPierced: 4,
   unrecognizedElements: 0,
   unrecognizedSamples: [],
+  droppedDataImages: 0,
   expandedWidgets: 2,
   elementsVisited: 120,
   warnings: [],

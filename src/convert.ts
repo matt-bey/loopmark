@@ -26,6 +26,10 @@ import {
   TABLE_CELL_CLASS_PATTERN,
   TABLE_ROW_CLASS_PATTERN,
   TASK_CLASS_PATTERN,
+  EMBEDDED_BLOCK_SELECTOR,
+  EOP_CLASS_PATTERN,
+  VOTER_COUNT_PATTERN,
+  VOTING_SELECTOR,
 } from './selectors.js';
 import type {
   AlertKind,
@@ -185,6 +189,14 @@ function classify(el: Element): Kind {
     return 'heading';
   }
 
+  // Routed to the inline path so `votingSummary` can recover the tally from the
+  // button's accessible name before the button itself is excluded.
+  try {
+    if (el.matches(VOTING_SELECTOR)) return 'inline';
+  } catch {
+    // ignore unsupported selector
+  }
+
   if (componentKind(el)) return 'component';
   if (isMention(el)) return 'inline';
 
@@ -205,10 +217,34 @@ function classify(el: Element): Kind {
   }
   // A task item that is not inside a <ul>; merged into a neighbouring list.
   if (TASK_CLASS_PATTERN.test(cls)) return 'task';
-  if (PARAGRAPH_CLASS_PATTERN.test(cls)) return 'paragraph';
 
-  if (INLINE_TAGS.has(tag)) return 'inline';
+  // `paragraph` and `inline` both flatten their subtree to inline content, so
+  // neither may be applied to an element that *hosts* a block-level component.
+  // Loop nests tables, code blocks and dividers inside a `.scriptor-paragraph`,
+  // and the flattening is what turned every table into run-on text.
+  if (PARAGRAPH_CLASS_PATTERN.test(cls)) {
+    return containsEmbeddedBlock(el) ? 'container' : 'paragraph';
+  }
+
+  if (INLINE_TAGS.has(tag)) {
+    return containsEmbeddedBlock(el) ? 'container' : 'inline';
+  }
   return 'container';
+}
+
+/**
+ * Does this element host block-level content that must not be flattened?
+ *
+ * Deliberately a light-DOM `querySelector`: it runs for every paragraph and
+ * inline span on the page, and Loop renders its components into the light DOM.
+ * A composed-tree search here would be correct but far too slow to be worth it.
+ */
+function containsEmbeddedBlock(el: Element): boolean {
+  try {
+    return el.querySelector(EMBEDDED_BLOCK_SELECTOR) !== null;
+  } catch {
+    return false;
+  }
 }
 
 function isCalloutish(el: Element): boolean {
@@ -326,6 +362,8 @@ interface Ctx {
   imageUrls: string[];
   /** Depth guard -- a malformed or cyclic composed tree must not blow the stack. */
   depth: number;
+  /** How many tables deep the walk currently is. */
+  tableDepth: number;
 }
 
 const MAX_DEPTH = 120;
@@ -335,6 +373,38 @@ function inlineChildren(el: Node, ctx: Ctx): Inline[] {
   const out: Inline[] = [];
   for (const child of composedChildren(el)) out.push(...toInline(child, ctx));
   return out;
+}
+
+/**
+ * Loop stamps every unlabelled image with the literal alt text
+ * "Image has no description", which is noise in the output rather than a
+ * description. Normalise it (and the empty case) to a neutral word.
+ */
+const LOOP_EMPTY_ALT = /^\s*(image has no description|add alt text)\s*$/i;
+
+/** Href used in place of an omitted inline base64 image. */
+export const DATA_IMAGE_PLACEHOLDER = '#image-omitted';
+
+function imageAlt(el: Element): string {
+  const alt = el.getAttribute('alt') ?? el.getAttribute('aria-label') ?? '';
+  return LOOP_EMPTY_ALT.test(alt) || !alt.trim() ? 'image' : alt;
+}
+
+/** Render a Loop voting cell as its tally, or `null` if this is not one. */
+function votingSummary(el: Element): string | null {
+  try {
+    if (!el.matches(VOTING_SELECTOR)) return null;
+  } catch {
+    return null;
+  }
+  const labelled = el.hasAttribute('aria-label') ? el : el.querySelector('[aria-label]');
+  const match = VOTER_COUNT_PATTERN.exec(labelled?.getAttribute('aria-label') ?? '');
+  const count = match?.[1] ? parseInt(match[1], 10) : 0;
+  return count === 1 ? '1 vote' : `${count} votes`;
+}
+
+function isDataUri(src: string): boolean {
+  return /^data:/i.test(src.trim());
 }
 
 function toInline(node: Node, ctx: Ctx): Inline[] {
@@ -347,17 +417,38 @@ function toInline(node: Node, ctx: Ctx): Inline[] {
   if (!isElement(node)) return [];
 
   const tag = node.tagName.toUpperCase();
+
+  // Checked before the exclusions, because the tally lives on a <button>.
+  const votes = votingSummary(node);
+  if (votes !== null) return [{ type: 'text', value: votes }];
+
   if (SKIP_TAGS.has(tag) || excluded(node)) return [];
 
   ctx.depth += 1;
   try {
-    if (tag === 'BR') return [{ type: 'break' }];
+    if (tag === 'BR') {
+      // `<br class="scriptor-EOP">` is Scriptor's end-of-paragraph sentinel,
+      // not an author-authored line break. Emitting it appends a stray `\`
+      // to the end of every line in the document.
+      if (EOP_CLASS_PATTERN.test(classOf(node))) return [];
+      return [{ type: 'break' }];
+    }
 
     if (tag === 'IMG') {
       const src = node.getAttribute('src') ?? '';
-      const alt = node.getAttribute('alt') ?? '';
-      if (src) ctx.imageUrls.push(src);
-      return src ? [{ type: 'image', alt, src }] : [];
+      const alt = imageAlt(node);
+      // Only real, resolvable URLs belong in the appendix; a base64 payload
+      // is not a reference anyone can follow.
+      if (src && !isDataUri(src)) ctx.imageUrls.push(src);
+      if (!src) return [];
+      // A pasted Loop image is an inline base64 `data:` URI, routinely
+      // hundreds of kilobytes. Inlining one produces a single unreadable line
+      // far larger than the rest of the document, so record a placeholder.
+      if (isDataUri(src)) {
+        ctx.diag.droppedDataImages += 1;
+        return [{ type: 'image', alt, src: DATA_IMAGE_PLACEHOLDER }];
+      }
+      return [{ type: 'image', alt, src }];
     }
 
     if (isMention(node)) {
@@ -419,8 +510,80 @@ function inlineIsEmpty(nodes: Inline[]): boolean {
   });
 }
 
+/**
+ * Merge adjacent inline nodes that carry the same mark.
+ *
+ * Loop's editor splits a single styled run across many sibling spans -- one
+ * per edit, effectively -- so "One Runtime Images" arrives as three
+ * separate bold runs and renders as `**One** **Runtime** **Images**`,
+ * and an inline path arrives one character at a time. Merging first is what
+ * makes the output read like prose instead of like a diff.
+ */
+function mergeAdjacent(nodes: Inline[]): Inline[] {
+  const out: Inline[] = [];
+  for (const node of nodes) {
+    const prev = out[out.length - 1];
+    if (prev && prev.type === node.type) {
+      if (node.type === 'text' && prev.type === 'text') {
+        out[out.length - 1] = { type: 'text', value: prev.value + node.value };
+        continue;
+      }
+      if (node.type === 'code' && prev.type === 'code') {
+        out[out.length - 1] = { type: 'code', value: prev.value + node.value };
+        continue;
+      }
+      if (
+        (node.type === 'strong' || node.type === 'em' || node.type === 'del') &&
+        (prev.type === 'strong' || prev.type === 'em' || prev.type === 'del')
+      ) {
+        out[out.length - 1] = {
+          type: node.type,
+          children: mergeAdjacent([...prev.children, ...node.children]),
+        } as Inline;
+        continue;
+      }
+    }
+    // A whitespace-only text node between two like marks is part of the run,
+    // not a separator: `**A** **B**` is really one bold phrase "A B".
+    if (node.type === 'text' && /^\s+$/.test(node.value) && out.length > 0) {
+      const before = out[out.length - 1]!;
+      if (before.type === 'strong' || before.type === 'em' || before.type === 'del') {
+        out.push(node);
+        continue;
+      }
+    }
+    out.push(node);
+  }
+  return joinAcrossSpace(out);
+}
+
+/** Second pass: `<strong>A</strong> <strong>B</strong>` -> one `**A B**`. */
+function joinAcrossSpace(nodes: Inline[]): Inline[] {
+  const out: Inline[] = [];
+  for (let i = 0; i < nodes.length; i += 1) {
+    const node = nodes[i]!;
+    const gap = nodes[i + 1];
+    const next = nodes[i + 2];
+    if (
+      (node.type === 'strong' || node.type === 'em' || node.type === 'del') &&
+      gap?.type === 'text' &&
+      /^\s+$/.test(gap.value) &&
+      next?.type === node.type
+    ) {
+      nodes[i + 2] = {
+        type: node.type,
+        children: [...node.children, { type: 'text', value: gap.value }, ...next.children],
+      } as Inline;
+      i += 1; // consume the gap; the merged node is handled on the next pass
+      continue;
+    }
+    out.push(node);
+  }
+  return out;
+}
+
 function trimInline(nodes: Inline[]): Inline[] {
-  const out = nodes.slice();
+  const out = mergeAdjacent(nodes);
   while (out.length && out[0]!.type === 'break') out.shift();
   while (out.length && out[out.length - 1]!.type === 'break') out.pop();
   if (out.length) {
@@ -786,11 +949,80 @@ function isHeaderRow(row: Element): boolean {
   });
 }
 
+/**
+ * Flatten block content back down to inline nodes for a table cell.
+ *
+ * GFM pipe tables cannot contain block structure, but a Loop cell routinely
+ * holds several paragraphs, or a bulleted list. Running the full block
+ * pipeline and then joining with hard breaks keeps those boundaries visible:
+ * `renderCell` turns each `break` into a `<br>`, which every GFM renderer
+ * honours inside a cell.
+ */
+function blocksToInline(blocks: Block[]): Inline[] {
+  const out: Inline[] = [];
+  const push = (nodes: Inline[]): void => {
+    const trimmed = trimInline(nodes);
+    if (trimmed.length === 0) return;
+    if (out.length > 0) out.push({ type: 'break' });
+    out.push(...trimmed);
+  };
+
+  for (const block of blocks) {
+    switch (block.type) {
+      case 'heading':
+      case 'paragraph':
+        push(block.children);
+        break;
+      case 'list':
+        for (const item of block.items) {
+          const box = item.checked === null ? '' : item.checked ? '[x] ' : '[ ] ';
+          push([{ type: 'text', value: `• ${box}` }, ...blocksToInline(item.blocks)]);
+        }
+        break;
+      case 'code':
+        // Newlines would terminate the table row, so the snippet becomes
+        // single-line inline code.
+        push([{ type: 'code', value: block.value.replace(/\s+/g, ' ').trim() }]);
+        break;
+      case 'quote':
+      case 'component':
+        push(blocksToInline(block.blocks));
+        break;
+      case 'image':
+        push([{ type: 'image', alt: block.alt, src: block.src }]);
+        break;
+      case 'table':
+        push([{ type: 'text', value: '(nested table omitted)' }]);
+        break;
+      case 'thematicBreak':
+        break;
+    }
+  }
+  return out;
+}
+
+/** A table nested inside a table cell is flattened rather than recursed into. */
+const MAX_TABLE_DEPTH = 3;
+
+function cellInline(cell: Element, ctx: Ctx): Inline[] {
+  return trimInline(blocksToInline(collectBlocks(cell, ctx)));
+}
+
 export function buildTable(el: Element, ctx: Ctx): Block | null {
+  if (ctx.tableDepth >= MAX_TABLE_DEPTH) return null;
   const rows = tableRows(el);
   if (rows.length === 0) return null;
 
-  const grid = rows.map((row) => rowCells(row).map((cell) => trimInline(inlineChildren(cell, ctx))));
+  ctx.tableDepth += 1;
+  try {
+    return buildTableRows(rows, ctx);
+  } finally {
+    ctx.tableDepth -= 1;
+  }
+}
+
+function buildTableRows(rows: Element[], ctx: Ctx): Block | null {
+  const grid = rows.map((row) => rowCells(row).map((cell) => cellInline(cell, ctx)));
   const nonEmpty = grid.filter((r) => r.length > 0);
   if (nonEmpty.length === 0) return null;
 
@@ -1083,7 +1315,7 @@ export interface ConvertInput {
 }
 
 export function convert({ root, meta, diagnostics }: ConvertInput): ConversionResult {
-  const ctx: Ctx = { diag: diagnostics, imageUrls: [], depth: 0 };
+  const ctx: Ctx = { diag: diagnostics, imageUrls: [], depth: 0, tableDepth: 0 };
   const blocks = collectBlocks(root, ctx);
   const doc: LoopDoc = { meta, blocks };
 
@@ -1120,6 +1352,7 @@ export function convertElement(root: Element, meta?: Partial<DocMeta>): Conversi
     unrecognizedSamples: [],
     expandedWidgets: 0,
     elementsVisited: 0,
+    droppedDataImages: 0,
     warnings: [],
   };
   return convert({

@@ -4,3 +4,8 @@ node_modules/
 coverage/
 .vitest/
 # dist/ is intentionally COMMITTED -- users grab the bookmarklet without a toolchain.
+
+# Saved Loop pages used for local verification. These contain real, internal
+# document content and must never be committed.
+temp/
+.scratch*

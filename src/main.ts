@@ -34,6 +34,7 @@ async function run(): Promise<void> {
     unrecognizedSamples: [],
     expandedWidgets: 0,
     elementsVisited: 0,
+    droppedDataImages: 0,
     warnings: [],
   };
 

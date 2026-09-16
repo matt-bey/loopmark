@@ -145,6 +145,41 @@ export const EXCLUDE_SELECTORS: readonly string[] = [
   '[class*="collabCursor" i]',
 
   /**
+   * Editor chrome discovered in a saved Loop page, 2026-09-16.
+   * Every one of these renders visible text that is not document content.
+   */
+  // The hover rail of block commands ("+", drag, context menu) beside each block.
+  '.scriptor-blocks-commands-wrapper',
+  '.scriptor-blocks-commands-hover',
+  '[data-automation-type="BlockContextMenuButton"]',
+  // "New changes. Select to learn who made new changes." unread marker; its
+  // accessible name leaks the bare word "New" into the text flow.
+  '.scriptor-block-bluedot',
+  // The "Add alt text" affordance that appears over an image on hover.
+  '.scriptor-image-alt-widget',
+  // Zero-width runs Scriptor uses for cursor placement, and screen-reader-only
+  // containers that duplicate content already present in the flow.
+  '.scriptor-nonDisplayable-textRun',
+  '.scriptor-placeholder-aria-hidden',
+  '.scriptor-alwaysAccessibleElementContainer',
+  // Table furniture: the column-resize grabbers and the parallel, aria-hidden
+  // "column grabber" table that mirrors the real one row for row.
+  '[data-automation-type="column-grabber-table"]',
+  '[data-automation-type="table-column-resize-element"]',
+
+  // Buttons are affordances, never prose. Loop puts a "New" row button inside
+  // every table, "Go to line" / "Show more lines" inside every code block, and
+  // a vote toggle inside every voting cell -- all of which otherwise land in
+  // the text flow. Voting is recovered separately, see VOTING_SELECTOR.
+  'button',
+  '[role="button"]',
+  'input',
+  'select',
+  // Fluent UI renders screen-reader-only help text into a div that is merely
+  // referenced by `aria-describedby`, so it is visible to a text walk.
+  '[id*="AriaDescription" i]',
+
+  /**
    * IMPORTANT: Loop renders a duplicate, `aria-hidden` copy of list items that
    * belong to an earlier list via `aria-owns`. Excluding aria-hidden subtrees
    * is what stops every bullet in an owned list appearing twice.
@@ -245,10 +280,23 @@ export const CALLOUT_CLASS_PATTERN =
   /scriptor-callout|scriptor-infoBlock|scriptor-highlightBlock|scriptor-component-block-callout|scriptor-block-callout/i;
 
 /** Fenced code blocks. */
-export const CODE_BLOCK_CLASS_PATTERN = /scriptor-codeBlock|scriptor-code-editor|code-snippet/i;
+/**
+ * A real, standalone code block. NOT `scriptor-code-editor` -- despite the
+ * name, that class marks *inline* code runs on `.scriptor-textRun` spans, and
+ * treating it as a block turns every inline snippet into its own fenced block.
+ * VERIFIED 2026-09-16 against a saved Loop page.
+ */
+export const CODE_BLOCK_CLASS_PATTERN =
+  /scriptor-component-code-block|scriptor-codeBlock|code-snippet/i;
 
 /** Inline code spans. */
-export const INLINE_CODE_CLASS_PATTERN = /scriptor-inlineCode/i;
+/**
+ * Inline code. Loop fragments a single snippet across many sibling spans
+ * tagged `scriptor-code-first` / `-middle` / `-last`, sometimes one character
+ * each, so adjacent runs must be merged before rendering.
+ * VERIFIED 2026-09-16 against a saved Loop page.
+ */
+export const INLINE_CODE_CLASS_PATTERN = /scriptor-inlineCode|scriptor-code-editor/i;
 
 /** Horizontal rules. */
 export const DIVIDER_CLASS_PATTERN = /scriptor-divider|scriptor-horizontalRule/i;
@@ -321,3 +369,60 @@ export const CALLOUT_PATTERNS: readonly {
   { pattern: /tip|hint|success|idea/i, alert: 'TIP' },
   { pattern: /note|info|callout/i, alert: 'NOTE' },
 ];
+
+/**
+ * Scriptor terminates every paragraph with `<br class="scriptor-EOP">`
+ * (End Of Paragraph). Treating it as a real `<br>` appends a stray `\` hard
+ * break to the end of every single line of output.
+ * VERIFIED 2026-09-16 against a saved Loop page.
+ */
+export const EOP_CLASS_PATTERN = /scriptor-EOP/i;
+
+/**
+ * Loop embeds block-level components *inside* a paragraph:
+ *
+ *   div.scriptor-paragraph
+ *     span.scriptor-inline
+ *       div.scriptor-hosting-element.scriptor-component-block
+ *         div[data-automation-type="Tablero"]
+ *           table[role="table"][data-automation-type="user-data-table"]
+ *
+ * Classifying that outer paragraph (or the inline span) by its own class alone
+ * flattens the entire table into run-on text. Any element matching one of
+ * these in its subtree must be descended into instead.
+ *
+ * VERIFIED 2026-09-16 against a saved Loop page.
+ */
+export const EMBEDDED_BLOCK_SELECTOR = [
+  'table',
+  '[role="table"]',
+  '[role="grid"]',
+  '[data-automation-type="Tablero"]',
+  '[data-automation-type="user-data-table"]',
+  '.scriptor-hosting-element',
+  '.scriptor-component-block',
+  '.scriptor-component-code-block',
+  '.scriptor-horizontal-divider',
+  'pre',
+  'ul',
+  'ol',
+  'blockquote',
+].join(', ');
+
+/**
+ * Loop's table component. The real data table is nested several levels below
+ * the Tablero host; the host itself is just a positioning wrapper.
+ * VERIFIED 2026-09-16 against a saved Loop page.
+ */
+export const TABLE_HOST_SELECTOR =
+  '[data-automation-type="Tablero"], [data-automation-type="user-data-table"]';
+
+/**
+ * Loop's voting component. The visible control is a button (excluded above),
+ * so the tally is recovered from its accessible name, "3 voters. Click to
+ * vote." -- otherwise every vote column exports as blank.
+ * VERIFIED 2026-09-16 against a saved Loop page.
+ */
+export const VOTING_SELECTOR =
+  '[data-testid="voting-container-test-id"], [data-automation-type="voting" i]';
+export const VOTER_COUNT_PATTERN = /(\d+)\s+voters?/i;
