@@ -32,47 +32,82 @@ widgets, and a tag/role/`data-testid` inventory — the raw material for
 
 ## Status
 
-> **NOT YET RUN against a live Loop page.**
+> **Answered on 2026-09-16 from a saved Loop page**, not from `probe.js`.
 >
-> Running it requires an authenticated Loop session, which the build environment
-> does not have. Until it is run, every entry in `src/selectors.ts` marked
-> `UNVERIFIED` is a structural guess, and the entries marked
-> `VERIFIED 2026-09-16 via loopd` are second-hand — derived from reading the
-> MIT-licensed [stuffbucket/loopd](https://github.com/stuffbucket/loopd), which
-> did this discovery work against live pages (see [`NOTICE`](../NOTICE)).
+> A complete Loop page ("Save page as… → Web page, complete") was inspected
+> offline: 2.9 MB of markup, 8 tables, 4 code blocks, 166 list items. That
+> answers every question below except Q4 and Q6, which need a live page because
+> they measure what changes when you scroll.
 >
-> **What this means in practice:** the converter, the traversal, the overlay and
-> the security gates are all fully tested and do not depend on the probe. What
-> the probe validates is whether `src/selectors.ts` points at the right markup —
-> i.e. whether loopmark finds anything to convert.
+> This is strictly better evidence than the probe for questions about *markup*,
+> and strictly worse for questions about *behaviour*. Running `probe.js` on a
+> live page is still worth doing, but it is no longer a gate: the selectors in
+> `src/selectors.ts` have been rewritten against observed markup and are
+> exercised by fixtures copied from it (`test/fixtures/loop-*.html`).
 
 ## Results
 
-<!-- Paste the probe's JSON report here, then summarise the six answers above it. -->
-
-_Awaiting first run._
-
 ### Q1 — shadow roots present
 
-_pending_
+**Yes, but not in content.** 59 declarative shadow roots, every one belonging to
+`<editor-squiggler>` — the Microsoft Editor spell-check underlay, which is
+`aria-hidden` and carries no document text. Document content is entirely in the
+light DOM.
+
+Composed-tree traversal is therefore *not* load-bearing on today's Loop. It is
+kept because it costs nothing, is already tested, and Loop is a moving target.
 
 ### Q2 — open or closed
 
-_pending_ — **this is the gate.** If closed, stop and report; no bookmarklet or
-extension can read closed shadow roots.
+**All open. Zero closed roots.** The project is possible.
 
 ### Q3 — nesting depth
 
-_pending_
+**One level**, and only inside the squiggler. No nesting in content.
 
 ### Q4 — pierced vs. plain walk
 
-_pending_
+**Not measurable offline** — needs a live page. Given Q1, the delta is expected
+to be zero for content and non-zero only for spell-check chrome.
 
 ### Q5 — heading signals
 
-_pending_
+**Present and essential.** 26 of 26 headings carry both `role="heading"` and
+`aria-level`. There is exactly one `<h2>` on the page and no `<h1>`, `<h3>`–`<h6>`
+at all.
+
+Headings are `<div class="scriptor-paragraph" role="heading" aria-level="N">` —
+note that they carry `scriptor-paragraph` too. `classify()` testing `role` before
+the paragraph class is what keeps every heading from exporting as body text.
 
 ### Q6 — virtualization
 
-_pending_
+**Heavy, and it costs content.** 640 elements are `[hidden]` in a page that was
+sitting at the top of its scroll. Three of the four code blocks were hidden, and
+their source was not in the DOM at all — only a language chip and a
+"Show more lines" button.
+
+`forceRender()` is load-bearing, not theatre. `convert()` now counts the tables
+and code blocks present against those it emitted and warns on any shortfall, so
+a partial export is never reported as a complete one.
+
+## What the saved page changed in the code
+
+| Finding | Consequence |
+| --- | --- |
+| Components are hosted *inside* a `.scriptor-paragraph` | Tables exported as run-on text. The headline bug. |
+| Table classes are hashed CSS-module names (`s3qI48J2O36ukhamGiQIJQ==`) | Any class-based table selector is worthless; `data-automation-type` is the stable hook. |
+| `data-automation-type="Tablero"` hosts the table | Real `<table>`/`<tr>`/`<td>` markup underneath, which the converter already handled. |
+| An `aria-hidden` "column grabber" table mirrors each real one | Excluded, or every table would double. |
+| First cell of every row is an `aria-hidden` row-number gutter | Excluded, or every table gains a phantom column. |
+| `scriptor-code-editor` marks *inline* code, not blocks | Every inline snippet became its own fenced block. |
+| `scriptor-code-editor-background-color-set` is on *headings* | A prefix match on the above would render every heading as inline code. |
+| Lists are never nested in the DOM; depth is `aria-level` | All nesting was lost; every item became its own list. |
+| There are **no `<ol>` elements**; numbering is a CSS custom property | Every numbered list exported as bullets. |
+| `<br class="scriptor-EOP">` ends every paragraph | A stray `\` on every line of output. |
+| Styled runs are split across sibling spans | `**One** **Runtime** **Image****s**`. |
+| Pasted images are base64 `data:` URIs | One 234 KB line; 2.9 MB of page became 1.29 MB of Markdown. |
+| Buttons sit inside tables and code blocks | A literal "New" after every table, "Show more lines" inside every fence. |
+
+Net effect on the sample page: **1.29 MB of run-on text became 16 KB with eight
+correct GFM tables, nested and numbered lists, and labelled code fences.**

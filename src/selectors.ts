@@ -303,9 +303,14 @@ export const CODE_BLOCK_CLASS_PATTERN =
  * Inline code. Loop fragments a single snippet across many sibling spans
  * tagged `scriptor-code-first` / `-middle` / `-last`, sometimes one character
  * each, so adjacent runs must be merged before rendering.
+ *
+ * The negative lookahead matters: Loop also puts
+ * `scriptor-code-editor-background-color-set` on *headings*, and a bare
+ * prefix match would render every heading on the page as inline code.
  * VERIFIED 2026-09-16 against a saved Loop page.
  */
-export const INLINE_CODE_CLASS_PATTERN = /scriptor-inlineCode|scriptor-code-editor/i;
+export const INLINE_CODE_CLASS_PATTERN =
+  /scriptor-inlineCode|scriptor-code-editor(?![-a-z])/i;
 
 /** Horizontal rules. */
 export const DIVIDER_CLASS_PATTERN = /scriptor-divider|scriptor-horizontalRule/i;
