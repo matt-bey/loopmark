@@ -65,14 +65,15 @@ paste into a hand-made bookmark.
 | --- | --- |
 | Headings | Keyed off `role="heading"` + `aria-level`, **not** tag nesting. This is what fixes the `- ` prefix artifact. |
 | Paragraphs | Soft lines within a paragraph join with a Markdown hard break. |
-| Lists | Ordered, unordered, nested, including items associated by `aria-owns`. |
+| Lists | Ordered, unordered, nested. Loop never nests lists in the DOM -- depth is `aria-level`, and numbering is a CSS custom property, since Loop emits no `<ol>` at all. |
 | Checklists | `- [ ]` / `- [x]` from checkbox state. |
-| Tables | GFM pipe tables. Pipes in cells are escaped, ragged rows padded. |
-| Code | Inline and fenced, with the language when Loop exposes it. |
+| Tables | GFM pipe tables. Cells run the full block pipeline, so paragraphs and lists inside a cell survive as `<br>`-joined content. Pipes escaped, ragged rows padded, the row-number gutter dropped. |
+| Voting tables | The tally is recovered from the vote button's accessible name, so a Votes column exports as `3 votes` rather than blank. |
+| Code | Inline and fenced. The language comes from Loop's toolbar combobox. A block Loop had not rendered says so instead of exporting its own buttons. |
 | Links | Recovered from Loop's `<span role="link" title="URL">` markup. |
 | Emphasis | Bold, italic, strikethrough, including style-only formatting. |
 | Callouts | Mapped to GitHub Alerts (`> [!WARNING]`) where the type is detectable. |
-| Images | `![alt](url)` plus a footnote noting the URLs are access-controlled. |
+| Images | `![alt](url)` plus a footnote noting the URLs are access-controlled. A pasted image is an inline base64 `data:` URI, routinely hundreds of KB, and is replaced with a placeholder. |
 | Mentions | Flattened to the plain display name. No identity resolution. |
 | Loop components | Best-effort static snapshot in a labelled fenced block. |
 
@@ -95,19 +96,25 @@ Read this section before relying on the output.
 - **It is a DOM scraper.** Microsoft can break it with any UI change, without
   notice. Everything Loop-specific is isolated in
   [`src/selectors.ts`](src/selectors.ts) so repairs are a one-file change.
-- **Very long pages may truncate.** Loop virtualizes its content; loopmark
-  scrolls to force rendering, but that scroll is capped at 8 seconds so a huge
-  page degrades rather than hanging your tab. The overlay warns when the output
-  looks suspiciously short for the number of elements walked.
+- **Very long pages may truncate.** Loop virtualizes aggressively -- a saved
+  page sitting at the top of its scroll had 640 `[hidden]` elements and three of
+  its four code blocks were not in the DOM at all. loopmark scrolls to force
+  rendering, but that scroll is capped at 8 seconds so a huge page degrades
+  rather than hanging your tab. It counts the tables and code blocks present in
+  the page against those it converted and warns about the difference, so a
+  partial export is never presented as a complete one. **If you see that
+  warning, scroll the whole page yourself and run it again.**
 - **Live components become static snapshots.** A voting table exports as the
   text it displayed at that moment, in a fenced block. Nothing stays live.
 - **Images are links, not files.** They point at their original Loop URLs, which
   are access-controlled and will not render for anyone outside an authenticated
   session — including in your Markdown viewer. Downloading the bytes would mean
   making network requests, which loopmark does not do.
-- **Closed shadow roots would break it entirely.** Loop currently uses open
-  shadow roots, which are readable. If that changes, no bookmarklet or extension
-  can read the content and this project ends. `spikes/probe.js` checks for this.
+- **Closed shadow roots would break it entirely.** Every shadow root on Loop
+  today is open, and in fact they all belong to the spell-check underlay rather
+  than to content -- see [`spikes/RESULTS.md`](spikes/RESULTS.md). If Loop ever
+  moves content into a closed root, no bookmarklet or extension can read it and
+  this project ends. `spikes/probe.js` checks for that.
 - **Comments, version history, and page metadata are not exported.** Only the
   document body.
 - **Unaffiliated with Microsoft.** Not supported, endorsed, or acknowledged by
@@ -152,6 +159,24 @@ or click **Copy Markdown**, which always works.
 
 **Nothing happened at all.** You may be on Safari (see the support table), or
 your organization may block `javascript:` bookmarks by policy.
+
+## Checking the output without a browser
+
+Save a Loop page from the browser (**Save page as… → Web page, complete**),
+scrolling to the bottom first so Loop renders everything, then:
+
+```
+npm run try -- "~/Downloads/My Page.html"          # print to stdout
+npm run try -- "~/Downloads/My Page.html" out.md   # write to a file
+```
+
+Diagnostics go to stderr, so `npm run try -- page.html > out.md` gives you clean
+Markdown with the warnings still on screen. This is the fastest way to confirm a
+selector change against real markup, and the only way to do it without a live
+Loop session. Two things it cannot tell you: anything Loop had virtualized when
+you saved is absent, and jsdom loads no stylesheets, so emphasis Loop expresses
+through a CSS class alone is missed. The real bookmarklet reads
+`getComputedStyle` in a real browser and does better on both counts.
 
 ## Development
 

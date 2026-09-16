@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "try": "node scripts/convert-file.mjs",
     "check:no-network": "node scripts/check-no-network.mjs",
     "check:fixtures": "node scripts/check-fixtures.mjs",
     "typecheck": "tsc --noEmit",

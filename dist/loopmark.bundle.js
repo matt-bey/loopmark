@@ -163,7 +163,7 @@
   var TASK_CLASS_PATTERN = /scriptor-task|scriptor-checkbox/i;
   var CALLOUT_CLASS_PATTERN = /scriptor-callout|scriptor-infoBlock|scriptor-highlightBlock|scriptor-component-block-callout|scriptor-block-callout/i;
   var CODE_BLOCK_CLASS_PATTERN = /scriptor-component-code-block|scriptor-codeBlock|code-snippet/i;
-  var INLINE_CODE_CLASS_PATTERN = /scriptor-inlineCode|scriptor-code-editor/i;
+  var INLINE_CODE_CLASS_PATTERN = /scriptor-inlineCode|scriptor-code-editor(?![-a-z])/i;
   var DIVIDER_CLASS_PATTERN = /scriptor-divider|scriptor-horizontalRule/i;
   var TABLE_ROW_CLASS_PATTERN = /scriptor-tableRow/i;
   var TABLE_CELL_CLASS_PATTERN = /scriptor-tableCell/i;
@@ -913,7 +913,7 @@
           }
           case "container": {
             const tag = child.tagName.toUpperCase();
-            if (!KNOWN_CONTAINERS.has(tag)) {
+            if (!KNOWN_CONTAINERS.has(tag) && !containsEmbeddedBlock(child)) {
               ctx.diag.unrecognizedElements += 1;
               const sample = tag.toLowerCase();
               if (!ctx.diag.unrecognizedSamples.includes(sample)) {

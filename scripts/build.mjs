@@ -21,8 +21,15 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = resolve(ROOT, 'dist');
 
-/** Browsers disagree on bookmark URL length; staying small avoids the question. */
-const MAX_ENCODED_BYTES = 60 * 1024;
+/**
+ * Browsers disagree on bookmark URL length, so this is a guardrail rather than
+ * a hard limit anyone has hit. Chrome and Edge -- the two browsers loopmark
+ * supports -- store bookmarklets far larger than this; the cap exists to make
+ * accidental bloat visible in CI, not because 96 KB is a cliff. Raised from
+ * 60 KB on 2026-09-16, when handling Loop's real markup pushed the payload to
+ * 90% of the old figure and the old figure turned out to be arbitrary.
+ */
+const MAX_ENCODED_BYTES = 96 * 1024;
 
 const SHARED = {
   entryPoints: [resolve(ROOT, 'src/main.ts')],

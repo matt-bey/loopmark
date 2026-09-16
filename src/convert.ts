@@ -704,7 +704,9 @@ export function collectBlocks(el: Node, ctx: Ctx): Block[] {
         }
         case 'container': {
           const tag = child.tagName.toUpperCase();
-          if (!KNOWN_CONTAINERS.has(tag)) {
+          // A <span> demoted to a container because it hosts a block component
+          // is a known Loop shape, not an element we failed to recognize.
+          if (!KNOWN_CONTAINERS.has(tag) && !containsEmbeddedBlock(child)) {
             ctx.diag.unrecognizedElements += 1;
             const sample = tag.toLowerCase();
             if (!ctx.diag.unrecognizedSamples.includes(sample)) {
