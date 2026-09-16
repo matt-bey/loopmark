@@ -33,6 +33,10 @@ import {
   LIST_MARKER_CSS_VAR,
   ORDERED_MARKER_PATTERN,
   BULLET_MARKER_PATTERN,
+  CODE_CHROME_SELECTOR,
+  CODE_LANGUAGE_ALIASES,
+  CODE_LANGUAGE_SELECTOR,
+  TABLE_COUNT_SELECTOR,
 } from './selectors.js';
 import type {
   AlertKind,
@@ -475,8 +479,11 @@ function toInline(node: Node, ctx: Ctx): Inline[] {
       tag === 'CODE' || tag === 'KBD' || tag === 'SAMP' || tag === 'TT' ||
       INLINE_CODE_CLASS_PATTERN.test(cls)
     ) {
-      const value = composedText(node).replace(/\s+/g, ' ').trim();
-      return value ? [{ type: 'code', value }] : [];
+      // NOT trimmed: Loop splits one snippet across sibling spans, and the
+      // space in `npm ci` can be the whole of the second span. Merging happens
+      // in `mergeAdjacent`; the merged value is trimmed once, at render.
+      const value = composedText(node).replace(/\s+/g, ' ');
+      return value.trim() ? [{ type: 'code', value }] : [];
     }
 
     // Wrap children in marks. Order is fixed (del > strong > em) so that the
@@ -658,7 +665,7 @@ export function collectBlocks(el: Node, ctx: Ctx): Block[] {
           break;
         }
         case 'code':
-          out.push(buildCode(child));
+          out.push(buildCode(child, ctx));
           break;
         case 'quote':
           out.push({
@@ -1167,6 +1174,18 @@ function buildTableRows(rows: Element[], ctx: Ctx): Block | null {
 // ---------------------------------------------------------------------------
 
 function detectLanguage(el: Element): string | null {
+  // Loop puts the language on a combobox button in the block's toolbar rather
+  // than on a class, so this is checked before the conventional hooks.
+  const combo = el.querySelector(CODE_LANGUAGE_SELECTOR);
+  if (combo) {
+    const name = (combo.textContent ?? '').trim().toLowerCase();
+    if (name) {
+      const alias = CODE_LANGUAGE_ALIASES[name];
+      const lang = alias === undefined ? name : alias;
+      return lang === '' ? null : lang;
+    }
+  }
+
   const candidates = [el, ...Array.from(el.querySelectorAll('code'))];
   for (const node of candidates) {
     const explicit = node.getAttribute('data-language') ?? node.getAttribute('lang');
@@ -1200,11 +1219,58 @@ export function dedent(value: string): string {
   return lines.map((line) => (line.startsWith(common!) ? line.slice(common!.length) : line)).join('\n');
 }
 
-export function buildCode(el: Element): Block {
+export function buildCode(el: Element, ctx?: Ctx): Block {
+  const lang = detectLanguage(el);
+
+  // Strip the block's own chrome before reading its text. Loop renders a
+  // language chip, a line-number gutter and "Go to line" / "Show more lines"
+  // controls inside the block, all of which otherwise end up in the fence.
+  const source = codeTextOf(el);
+
   // Deliberately NOT collapsing whitespace: it is the entire point of a code block.
-  let value = composedText(el).replace(/\r\n?/g, '\n');
+  let value = source.replace(/\r\n?/g, '\n');
   value = dedent(value.replace(/^\n+/, '').replace(/[ \t]+$/gm, '')).replace(/\s+$/, '');
-  return { type: 'code', lang: detectLanguage(el), value };
+
+  if (value === '') {
+    // Loop virtualizes long snippets: until "Show more lines" is clicked the
+    // code simply is not in the DOM. Saying so beats emitting an empty fence
+    // that reads as an intentionally blank code block.
+    const label = lang ? `${lang} ` : '';
+    ctx?.diag.warnings.push(
+      `A ${label ? `${lang} ` : ''}code block was collapsed or virtualized and could not be read.`,
+    );
+    return {
+      type: 'code',
+      lang,
+      value: `[loopmark: this ${label}code block was collapsed in the page and could not be read]`,
+    };
+  }
+
+  return { type: 'code', lang, value };
+}
+
+/** Text of a code block with its editor chrome removed. */
+function codeTextOf(el: Element): string {
+  let chrome: Element[] = [];
+  try {
+    chrome = Array.from(el.querySelectorAll(CODE_CHROME_SELECTOR));
+  } catch {
+    chrome = [];
+  }
+  if (chrome.length === 0) return composedText(el);
+
+  const skip = new Set(chrome);
+  const parts: string[] = [];
+  const visit = (node: Node): void => {
+    if (isElement(node) && skip.has(node)) return;
+    if (isText(node)) {
+      parts.push(node.nodeValue ?? '');
+      return;
+    }
+    for (const child of composedChildren(node)) visit(child);
+  };
+  visit(el);
+  return parts.join('');
 }
 
 // ---------------------------------------------------------------------------
@@ -1265,8 +1331,9 @@ export function renderInline(nodes: Inline[]): string {
         out += escapeText(node.value);
         break;
       case 'code': {
-        const fence = codeFence(node.value);
-        const padded = /^`|`$/.test(node.value) ? ` ${node.value} ` : node.value;
+        const value = node.value.trim();
+        const fence = codeFence(value);
+        const padded = /^`|`$/.test(value) ? ` ${value} ` : value;
         out += `${fence}${padded}${fence}`;
         break;
       }
@@ -1420,6 +1487,54 @@ function longestBacktickRun(value: string): number {
 // Top-level conversion
 // ---------------------------------------------------------------------------
 
+/**
+ * Compare what the page contains with what was converted.
+ *
+ * Loop virtualizes off-screen blocks: a table or code block outside the
+ * viewport may be `hidden`, or present only as its chrome. `forceRender`
+ * scrolls the page to defeat that, but it is best-effort, so a shortfall is
+ * reported rather than passed off as a complete export.
+ */
+function warnOnMissingComponents(
+  root: Element,
+  blocks: Block[],
+  diagnostics: Diagnostics,
+): void {
+  const emitted = { table: 0, code: 0 };
+  const count = (list: Block[]): void => {
+    for (const block of list) {
+      if (block.type === 'table') emitted.table += 1;
+      else if (block.type === 'code') emitted.code += 1;
+      else if (block.type === 'quote' || block.type === 'component') count(block.blocks);
+      else if (block.type === 'list') for (const item of block.items) count(item.blocks);
+    }
+  };
+  count(blocks);
+
+  const present = {
+    table: safeCount(root, TABLE_COUNT_SELECTOR),
+    code: safeCount(root, '.scriptor-component-code-block'),
+  };
+
+  for (const kind of ['table', 'code'] as const) {
+    const missing = present[kind] - emitted[kind];
+    if (missing > 0) {
+      diagnostics.warnings.push(
+        `${missing} of ${present[kind]} ${kind} block(s) could not be read, most likely ` +
+          `because Loop had not rendered them. Scroll the whole page and run loopmark again.`,
+      );
+    }
+  }
+}
+
+function safeCount(root: Element, selector: string): number {
+  try {
+    return root.querySelectorAll(selector).length;
+  } catch {
+    return 0;
+  }
+}
+
 export interface ConvertInput {
   root: Element;
   meta: DocMeta;
@@ -1432,6 +1547,8 @@ export function convert({ root, meta, diagnostics }: ConvertInput): ConversionRe
   const doc: LoopDoc = { meta, blocks };
 
   let markdown = `# ${meta.title.replace(/\n/g, ' ').trim() || 'Untitled'}\n\n${renderBlocks(blocks)}`;
+
+  warnOnMissingComponents(root, blocks, diagnostics);
 
   const uniqueImages = Array.from(new Set(ctx.imageUrls));
   if (uniqueImages.length > 0) {

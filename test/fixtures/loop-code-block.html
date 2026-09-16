@@ -1,0 +1,47 @@
+<!--
+  Loop's code block, from a saved page on 2026-09-16.
+
+  The language lives on a combobox button in the toolbar, not on a class. The
+  block is virtualized: a long snippet renders only its visible lines and
+  hides the rest behind "Show more lines", so an unrendered block contains its
+  chrome and nothing else.
+-->
+<div class="scriptor-pageContainer">
+  <div class="scriptor-pageBody">
+
+    <div class="scriptor-paragraph">
+      <span class="scriptor-inline">
+        <div class="scriptor-hosting-element scriptor-component-block">
+          <div tabindex="-1" data-theme="dark" class="scriptor-component-code-block aB1cD2eF3g==">
+            <div class="toolbar-hash">
+              <button type="button" id="go-to-line-button" role="button" aria-label="Go to line (Ctrl+G)">
+                <span>Go to line</span>
+              </button>
+              <button type="button" role="combobox" aria-label="Language mode">YAML</button>
+            </div>
+            <div class="code-body-hash">
+              <div class="line-hash"><span>steps:</span></div>
+              <div class="line-hash"><span>  - script: echo hello</span></div>
+            </div>
+          </div>
+        </div>
+      </span>
+    </div>
+
+    <div class="scriptor-paragraph">
+      <span class="scriptor-inline">
+        <div class="scriptor-hosting-element scriptor-component-block">
+          <div tabindex="-1" data-theme="dark" class="scriptor-component-code-block aB1cD2eF3g== scriptor-codeblock-virtualized">
+            <div class="toolbar-hash">
+              <button type="button" role="combobox" aria-label="Language mode">Dockerfile</button>
+            </div>
+            <div class="more-hash">
+              <button type="button" aria-label="Show more lines"><span>Show more lines</span></button>
+            </div>
+          </div>
+        </div>
+      </span>
+    </div>
+
+  </div>
+</div>

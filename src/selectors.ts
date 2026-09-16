@@ -220,6 +220,15 @@ export const EXPANDABLE_ALLOWLIST: readonly string[] = [
 
   // Collapsed outline headings expose aria-expanded on the heading itself.
   '[role="heading"][aria-expanded="false"]',
+
+  /**
+   * Loop virtualizes code blocks: a long snippet renders only its first few
+   * lines and hides the rest behind "Show more lines". Without this, a code
+   * block exports as its chrome and nothing else.
+   * VERIFIED 2026-09-16 against a saved Loop page.
+   */
+  'button[aria-label="Show more lines" i]',
+  'button[aria-label*="show more" i]',
 ];
 
 /**
@@ -418,6 +427,12 @@ export const TABLE_HOST_SELECTOR =
   '[data-automation-type="Tablero"], [data-automation-type="user-data-table"]';
 
 /**
+ * One match per table, for coverage counting. `TABLE_HOST_SELECTOR` matches
+ * both the Tablero wrapper and the table inside it, so it counts double.
+ */
+export const TABLE_COUNT_SELECTOR = '[data-automation-type="user-data-table"]';
+
+/**
  * Loop's voting component. The visible control is a button (excluded above),
  * so the tally is recovered from its accessible name, "3 voters. Click to
  * vote." -- otherwise every vote column exports as blank.
@@ -447,3 +462,35 @@ export const ORDERED_MARKER_PATTERN = /^(\d+|[a-z]+)[.)]$/i;
 
 /** `.scriptor-listItem-marker-bullet` and the glyphs Loop renders for bullets. */
 export const BULLET_MARKER_PATTERN = /^[\u2022\u25E6\u25AA\u25CF\u2023\u2043*+-]$/;
+
+/**
+ * Loop's code block. The language sits on a combobox button in the block's
+ * toolbar, e.g. `<button role="combobox" aria-label="Language mode">YAML`.
+ * VERIFIED 2026-09-16 against a saved Loop page.
+ */
+export const CODE_LANGUAGE_SELECTOR = '[role="combobox"][aria-label*="language" i]';
+
+/**
+ * Chrome rendered inside a code block, all of which lands in the fence if it
+ * is not stripped: the language chip, the line-number gutter and the
+ * "Show more lines" / "Go to line" controls.
+ */
+export const CODE_CHROME_SELECTOR = [
+  '[role="combobox"]',
+  '[role="toolbar"]',
+  'button',
+  '[role="button"]',
+  '[class*="lineNumber" i]',
+].join(', ');
+
+/** Display name -> Markdown info string, for the languages Loop offers. */
+export const CODE_LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
+  dockerfile: 'dockerfile',
+  yaml: 'yaml',
+  'c#': 'csharp',
+  'c++': 'cpp',
+  'objective-c': 'objectivec',
+  'plain text': '',
+  plaintext: '',
+  none: '',
+};

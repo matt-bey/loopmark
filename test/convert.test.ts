@@ -464,3 +464,39 @@ describe('Loop lists (real markup)', () => {
     expect(md()).toMatch(/^- Tag and push$/m);
   });
 });
+
+describe('Loop code blocks (real markup)', () => {
+  const md = (): string => body(fixture('loop-code-block.html'));
+
+  it('reads the language from the toolbar combobox, not a class', () => {
+    expect(md()).toContain('```yaml');
+    expect(md()).toContain('```dockerfile');
+  });
+
+  it('keeps the block chrome out of the fence', () => {
+    const out = md();
+    expect(out).toContain('steps:');
+    expect(out).toContain('- script: echo hello');
+    expect(out).not.toContain('Go to line');
+    expect(out).not.toContain('YAML\n');
+  });
+
+  it('says so when a block is virtualized rather than emitting its chrome', () => {
+    const out = md();
+    expect(out).not.toContain('Show more lines');
+    expect(out).toMatch(/\[loopmark: this dockerfile code block was collapsed/);
+  });
+
+  it('does not classify an inline code run as a code block', () => {
+    // `scriptor-code-editor` names inline runs despite the "editor" in it.
+    const el = html(
+      '<div class="scriptor-paragraph">' +
+        '<span class="scriptor-textRun scriptor-inline scriptor-code-editor">npm</span>' +
+        '<span class="scriptor-textRun scriptor-inline scriptor-code-editor"> ci</span>' +
+        '</div>',
+    );
+    const out = body(el);
+    expect(out).toContain('`npm ci`');
+    expect(out).not.toContain('```');
+  });
+});

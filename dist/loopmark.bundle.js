@@ -71,6 +71,39 @@
     '[class*="presence" i]',
     '[class*="collabCursor" i]',
     /**
+     * Editor chrome discovered in a saved Loop page, 2026-09-16.
+     * Every one of these renders visible text that is not document content.
+     */
+    // The hover rail of block commands ("+", drag, context menu) beside each block.
+    ".scriptor-blocks-commands-wrapper",
+    ".scriptor-blocks-commands-hover",
+    '[data-automation-type="BlockContextMenuButton"]',
+    // "New changes. Select to learn who made new changes." unread marker; its
+    // accessible name leaks the bare word "New" into the text flow.
+    ".scriptor-block-bluedot",
+    // The "Add alt text" affordance that appears over an image on hover.
+    ".scriptor-image-alt-widget",
+    // Zero-width runs Scriptor uses for cursor placement, and screen-reader-only
+    // containers that duplicate content already present in the flow.
+    ".scriptor-nonDisplayable-textRun",
+    ".scriptor-placeholder-aria-hidden",
+    ".scriptor-alwaysAccessibleElementContainer",
+    // Table furniture: the column-resize grabbers and the parallel, aria-hidden
+    // "column grabber" table that mirrors the real one row for row.
+    '[data-automation-type="column-grabber-table"]',
+    '[data-automation-type="table-column-resize-element"]',
+    // Buttons are affordances, never prose. Loop puts a "New" row button inside
+    // every table, "Go to line" / "Show more lines" inside every code block, and
+    // a vote toggle inside every voting cell -- all of which otherwise land in
+    // the text flow. Voting is recovered separately, see VOTING_SELECTOR.
+    "button",
+    '[role="button"]',
+    "input",
+    "select",
+    // Fluent UI renders screen-reader-only help text into a div that is merely
+    // referenced by `aria-describedby`, so it is visible to a text walk.
+    '[id*="AriaDescription" i]',
+    /**
      * IMPORTANT: Loop renders a duplicate, `aria-hidden` copy of list items that
      * belong to an earlier list via `aria-owns`. Excluding aria-hidden subtrees
      * is what stops every bullet in an owned list appearing twice.
@@ -94,7 +127,15 @@
     '[role="button"][aria-expanded="false"][class*="collaps" i]',
     '[role="button"][aria-expanded="false"][class*="expand" i]',
     // Collapsed outline headings expose aria-expanded on the heading itself.
-    '[role="heading"][aria-expanded="false"]'
+    '[role="heading"][aria-expanded="false"]',
+    /**
+     * Loop virtualizes code blocks: a long snippet renders only its first few
+     * lines and hides the rest behind "Show more lines". Without this, a code
+     * block exports as its chrome and nothing else.
+     * VERIFIED 2026-09-16 against a saved Loop page.
+     */
+    'button[aria-label="Show more lines" i]',
+    'button[aria-label*="show more" i]'
   ];
   var DANGEROUS_CLICK_PATTERNS = [
     /delete|remove|trash|discard/i,
@@ -121,8 +162,8 @@
   var PARAGRAPH_CLASS_PATTERN = /scriptor-paragraph/i;
   var TASK_CLASS_PATTERN = /scriptor-task|scriptor-checkbox/i;
   var CALLOUT_CLASS_PATTERN = /scriptor-callout|scriptor-infoBlock|scriptor-highlightBlock|scriptor-component-block-callout|scriptor-block-callout/i;
-  var CODE_BLOCK_CLASS_PATTERN = /scriptor-codeBlock|scriptor-code-editor|code-snippet/i;
-  var INLINE_CODE_CLASS_PATTERN = /scriptor-inlineCode/i;
+  var CODE_BLOCK_CLASS_PATTERN = /scriptor-component-code-block|scriptor-codeBlock|code-snippet/i;
+  var INLINE_CODE_CLASS_PATTERN = /scriptor-inlineCode|scriptor-code-editor/i;
   var DIVIDER_CLASS_PATTERN = /scriptor-divider|scriptor-horizontalRule/i;
   var TABLE_ROW_CLASS_PATTERN = /scriptor-tableRow/i;
   var TABLE_CELL_CLASS_PATTERN = /scriptor-tableCell/i;
@@ -149,6 +190,46 @@
     { pattern: /tip|hint|success|idea/i, alert: "TIP" },
     { pattern: /note|info|callout/i, alert: "NOTE" }
   ];
+  var EOP_CLASS_PATTERN = /scriptor-EOP/i;
+  var EMBEDDED_BLOCK_SELECTOR = [
+    "table",
+    '[role="table"]',
+    '[role="grid"]',
+    '[data-automation-type="Tablero"]',
+    '[data-automation-type="user-data-table"]',
+    ".scriptor-hosting-element",
+    ".scriptor-component-block",
+    ".scriptor-component-code-block",
+    ".scriptor-horizontal-divider",
+    "pre",
+    "ul",
+    "ol",
+    "blockquote"
+  ].join(", ");
+  var TABLE_COUNT_SELECTOR = '[data-automation-type="user-data-table"]';
+  var VOTING_SELECTOR = '[data-testid="voting-container-test-id"], [data-automation-type="voting" i]';
+  var VOTER_COUNT_PATTERN = /(\d+)\s+voters?/i;
+  var LIST_MARKER_CSS_VAR = "--scriptor-list-marker-text";
+  var ORDERED_MARKER_PATTERN = /^(\d+|[a-z]+)[.)]$/i;
+  var BULLET_MARKER_PATTERN = /^[\u2022\u25E6\u25AA\u25CF\u2023\u2043*+-]$/;
+  var CODE_LANGUAGE_SELECTOR = '[role="combobox"][aria-label*="language" i]';
+  var CODE_CHROME_SELECTOR = [
+    '[role="combobox"]',
+    '[role="toolbar"]',
+    "button",
+    '[role="button"]',
+    '[class*="lineNumber" i]'
+  ].join(", ");
+  var CODE_LANGUAGE_ALIASES = {
+    dockerfile: "dockerfile",
+    yaml: "yaml",
+    "c#": "csharp",
+    "c++": "cpp",
+    "objective-c": "objectivec",
+    "plain text": "",
+    plaintext: "",
+    none: ""
+  };
 
   // src/acquire.ts
   var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -492,6 +573,10 @@
     if (role === "heading" || /^H[1-6]$/.test(tag) || HEADING_CLASS_PATTERN.test(cls) || (el2.getAttribute("data-automation-type") ?? "").toLowerCase().includes("heading")) {
       return "heading";
     }
+    try {
+      if (el2.matches(VOTING_SELECTOR)) return "inline";
+    } catch {
+    }
     if (componentKind(el2)) return "component";
     if (isMention(el2)) return "inline";
     if (tag === "PRE" || CODE_BLOCK_CLASS_PATTERN.test(cls)) return "code";
@@ -505,9 +590,20 @@
       return "quote";
     }
     if (TASK_CLASS_PATTERN.test(cls)) return "task";
-    if (PARAGRAPH_CLASS_PATTERN.test(cls)) return "paragraph";
-    if (INLINE_TAGS.has(tag)) return "inline";
+    if (PARAGRAPH_CLASS_PATTERN.test(cls)) {
+      return containsEmbeddedBlock(el2) ? "container" : "paragraph";
+    }
+    if (INLINE_TAGS.has(tag)) {
+      return containsEmbeddedBlock(el2) ? "container" : "inline";
+    }
     return "container";
+  }
+  function containsEmbeddedBlock(el2) {
+    try {
+      return el2.querySelector(EMBEDDED_BLOCK_SELECTOR) !== null;
+    } catch {
+      return false;
+    }
   }
   function isCalloutish(el2) {
     if (el2.hasAttribute("data-callout-type")) return true;
@@ -582,6 +678,26 @@
     for (const child of composedChildren(el2)) out.push(...toInline(child, ctx));
     return out;
   }
+  var LOOP_EMPTY_ALT = /^\s*(image has no description|add alt text)\s*$/i;
+  var DATA_IMAGE_PLACEHOLDER = "#image-omitted";
+  function imageAlt(el2) {
+    const alt = el2.getAttribute("alt") ?? el2.getAttribute("aria-label") ?? "";
+    return LOOP_EMPTY_ALT.test(alt) || !alt.trim() ? "image" : alt;
+  }
+  function votingSummary(el2) {
+    try {
+      if (!el2.matches(VOTING_SELECTOR)) return null;
+    } catch {
+      return null;
+    }
+    const labelled = el2.hasAttribute("aria-label") ? el2 : el2.querySelector("[aria-label]");
+    const match = VOTER_COUNT_PATTERN.exec(labelled?.getAttribute("aria-label") ?? "");
+    const count = match?.[1] ? parseInt(match[1], 10) : 0;
+    return count === 1 ? "1 vote" : `${count} votes`;
+  }
+  function isDataUri(src) {
+    return /^data:/i.test(src.trim());
+  }
   function toInline(node, ctx) {
     if (ctx.depth > MAX_DEPTH) return [];
     if (isText(node)) {
@@ -590,15 +706,25 @@
     }
     if (!isElement2(node)) return [];
     const tag = node.tagName.toUpperCase();
+    const votes = votingSummary(node);
+    if (votes !== null) return [{ type: "text", value: votes }];
     if (SKIP_TAGS.has(tag) || excluded(node)) return [];
     ctx.depth += 1;
     try {
-      if (tag === "BR") return [{ type: "break" }];
+      if (tag === "BR") {
+        if (EOP_CLASS_PATTERN.test(classOf(node))) return [];
+        return [{ type: "break" }];
+      }
       if (tag === "IMG") {
         const src = node.getAttribute("src") ?? "";
-        const alt = node.getAttribute("alt") ?? "";
-        if (src) ctx.imageUrls.push(src);
-        return src ? [{ type: "image", alt, src }] : [];
+        const alt = imageAlt(node);
+        if (src && !isDataUri(src)) ctx.imageUrls.push(src);
+        if (!src) return [];
+        if (isDataUri(src)) {
+          ctx.diag.droppedDataImages += 1;
+          return [{ type: "image", alt, src: DATA_IMAGE_PLACEHOLDER }];
+        }
+        return [{ type: "image", alt, src }];
       }
       if (isMention(node)) {
         const name = composedText(node).replace(/\s+/g, " ").trim();
@@ -613,8 +739,8 @@
         return [{ type: "link", href, children: children2 }];
       }
       if (tag === "CODE" || tag === "KBD" || tag === "SAMP" || tag === "TT" || INLINE_CODE_CLASS_PATTERN.test(cls)) {
-        const value = composedText(node).replace(/\s+/g, " ").trim();
-        return value ? [{ type: "code", value }] : [];
+        const value = composedText(node).replace(/\s+/g, " ");
+        return value.trim() ? [{ type: "code", value }] : [];
       }
       let children = inlineChildren(node, ctx);
       if (children.length === 0) return [];
@@ -639,8 +765,58 @@
       return !inlineIsEmpty(n.children);
     });
   }
+  function mergeAdjacent(nodes) {
+    const out = [];
+    for (const node of nodes) {
+      const prev = out[out.length - 1];
+      if (prev && prev.type === node.type) {
+        if (node.type === "text" && prev.type === "text") {
+          out[out.length - 1] = { type: "text", value: prev.value + node.value };
+          continue;
+        }
+        if (node.type === "code" && prev.type === "code") {
+          out[out.length - 1] = { type: "code", value: prev.value + node.value };
+          continue;
+        }
+        if ((node.type === "strong" || node.type === "em" || node.type === "del") && (prev.type === "strong" || prev.type === "em" || prev.type === "del")) {
+          out[out.length - 1] = {
+            type: node.type,
+            children: mergeAdjacent([...prev.children, ...node.children])
+          };
+          continue;
+        }
+      }
+      if (node.type === "text" && /^\s+$/.test(node.value) && out.length > 0) {
+        const before = out[out.length - 1];
+        if (before.type === "strong" || before.type === "em" || before.type === "del") {
+          out.push(node);
+          continue;
+        }
+      }
+      out.push(node);
+    }
+    return joinAcrossSpace(out);
+  }
+  function joinAcrossSpace(nodes) {
+    const out = [];
+    for (let i = 0; i < nodes.length; i += 1) {
+      const node = nodes[i];
+      const gap = nodes[i + 1];
+      const next = nodes[i + 2];
+      if ((node.type === "strong" || node.type === "em" || node.type === "del") && gap?.type === "text" && /^\s+$/.test(gap.value) && next?.type === node.type) {
+        nodes[i + 2] = {
+          type: node.type,
+          children: [...node.children, { type: "text", value: gap.value }, ...next.children]
+        };
+        i += 1;
+        continue;
+      }
+      out.push(node);
+    }
+    return out;
+  }
   function trimInline(nodes) {
-    const out = nodes.slice();
+    const out = mergeAdjacent(nodes);
     while (out.length && out[0].type === "break") out.shift();
     while (out.length && out[out.length - 1].type === "break") out.pop();
     if (out.length) {
@@ -700,7 +876,7 @@
             break;
           }
           case "code":
-            out.push(buildCode(child));
+            out.push(buildCode(child, ctx));
             break;
           case "quote":
             out.push({
@@ -750,10 +926,54 @@
         }
       }
       flush();
-      return out;
+      return mergeAndNestLists(out);
     } finally {
       ctx.depth -= 1;
     }
+  }
+  function isLoopList(block) {
+    return block.type === "list" && block.items.length > 0 && block.items.every((item) => item.level !== void 0);
+  }
+  function mergeAndNestLists(blocks) {
+    const merged = [];
+    for (const block of blocks) {
+      const previous = merged[merged.length - 1];
+      if (previous && isLoopList(previous) && isLoopList(block)) {
+        previous.items.push(...block.items);
+        continue;
+      }
+      merged.push(block);
+    }
+    return merged.map(nestLoopList);
+  }
+  function nestLoopList(block) {
+    if (!isLoopList(block)) return block;
+    const items = block.items;
+    const baseLevel = items[0].level ?? 1;
+    if (!items.some((item) => (item.level ?? 1) > baseLevel)) return block;
+    const root = { type: "list", ordered: block.ordered, start: block.start, items: [] };
+    const stack = [{ level: baseLevel, list: root }];
+    for (const item of items) {
+      const level = item.level ?? baseLevel;
+      while (stack.length > 1 && level < stack[stack.length - 1].level) stack.pop();
+      let top = stack[stack.length - 1];
+      if (level > top.level) {
+        const parent = top.list.items[top.list.items.length - 1];
+        const child = {
+          type: "list",
+          ordered: item.ordered === true,
+          start: item.position ?? 1,
+          items: []
+        };
+        if (parent) {
+          parent.blocks.push(child);
+          stack.push({ level, list: child });
+          top = stack[stack.length - 1];
+        }
+      }
+      top.list.items.push(item);
+    }
+    return root;
   }
   function buildParagraph(el2, ctx) {
     const BLOCK_KINDS = ["list", "table", "code", "quote", "heading", "component", "task"];
@@ -831,6 +1051,23 @@
     if (found !== null) return found;
     return TASK_CLASS_PATTERN.test(classOf(el2)) ? false : null;
   }
+  function loopListMarker(li) {
+    const style = li.style;
+    const raw = style?.getPropertyValue?.(LIST_MARKER_CSS_VAR) ?? "";
+    const marker = raw.replace(/^\s*["']|["']\s*$/g, "").trim();
+    return marker === "" ? null : marker;
+  }
+  function markerIsOrdered(marker) {
+    if (marker === null) return false;
+    if (BULLET_MARKER_PATTERN.test(marker)) return false;
+    return ORDERED_MARKER_PATTERN.test(marker);
+  }
+  function ariaNumber(el2, attr) {
+    const raw = el2.getAttribute(attr);
+    if (raw === null) return void 0;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n > 0 ? n : void 0;
+  }
   function buildList(listEl, ctx) {
     const ordered = listEl.tagName.toUpperCase() === "OL" || (listEl.getAttribute("role") ?? "").toLowerCase() === "list" && listEl.hasAttribute("start");
     const startAttr = parseInt(listEl.getAttribute("start") ?? "1", 10);
@@ -839,7 +1076,13 @@
     let bucket = [];
     const flushBucket = () => {
       if (bucket.length === 0) return;
-      out.push({ type: "list", ordered, start, items: bucket });
+      const first = bucket[0];
+      out.push({
+        type: "list",
+        ordered: ordered || first.ordered === true,
+        start: first.position ?? start,
+        items: bucket
+      });
       bucket = [];
     };
     for (const itemEl of listItemElements(listEl)) {
@@ -859,7 +1102,14 @@
         out.push(blocks[0]);
         continue;
       }
-      bucket.push({ checked: checkedState(itemEl), blocks });
+      const marker = loopListMarker(itemEl);
+      const item = { checked: checkedState(itemEl), blocks };
+      const level = ariaNumber(itemEl, "aria-level");
+      if (level !== void 0) item.level = level;
+      if (marker !== null) item.ordered = markerIsOrdered(marker);
+      const position = ariaNumber(itemEl, "aria-posinset");
+      if (position !== void 0) item.position = position;
+      bucket.push(item);
     }
     flushBucket();
     if (out.length === 0) return collectBlocks(listEl, ctx);
@@ -909,10 +1159,62 @@
       return c.tagName.toUpperCase() === "TH" || role === "columnheader";
     });
   }
+  function blocksToInline(blocks) {
+    const out = [];
+    const push = (nodes) => {
+      const trimmed = trimInline(nodes);
+      if (trimmed.length === 0) return;
+      if (out.length > 0) out.push({ type: "break" });
+      out.push(...trimmed);
+    };
+    for (const block of blocks) {
+      switch (block.type) {
+        case "heading":
+        case "paragraph":
+          push(block.children);
+          break;
+        case "list":
+          for (const item of block.items) {
+            const box = item.checked === null ? "" : item.checked ? "[x] " : "[ ] ";
+            push([{ type: "text", value: `\u2022 ${box}` }, ...blocksToInline(item.blocks)]);
+          }
+          break;
+        case "code":
+          push([{ type: "code", value: block.value.replace(/\s+/g, " ").trim() }]);
+          break;
+        case "quote":
+        case "component":
+          push(blocksToInline(block.blocks));
+          break;
+        case "image":
+          push([{ type: "image", alt: block.alt, src: block.src }]);
+          break;
+        case "table":
+          push([{ type: "text", value: "(nested table omitted)" }]);
+          break;
+        case "thematicBreak":
+          break;
+      }
+    }
+    return out;
+  }
+  var MAX_TABLE_DEPTH = 3;
+  function cellInline(cell, ctx) {
+    return trimInline(blocksToInline(collectBlocks(cell, ctx)));
+  }
   function buildTable(el2, ctx) {
+    if (ctx.tableDepth >= MAX_TABLE_DEPTH) return null;
     const rows = tableRows(el2);
     if (rows.length === 0) return null;
-    const grid = rows.map((row) => rowCells(row).map((cell) => trimInline(inlineChildren(cell, ctx))));
+    ctx.tableDepth += 1;
+    try {
+      return buildTableRows(rows, ctx);
+    } finally {
+      ctx.tableDepth -= 1;
+    }
+  }
+  function buildTableRows(rows, ctx) {
+    const grid = rows.map((row) => rowCells(row).map((cell) => cellInline(cell, ctx)));
     const nonEmpty = grid.filter((r) => r.length > 0);
     if (nonEmpty.length === 0) return null;
     let header;
@@ -933,6 +1235,15 @@
     return { type: "table", header: pad(header), rows: body.map(pad) };
   }
   function detectLanguage(el2) {
+    const combo = el2.querySelector(CODE_LANGUAGE_SELECTOR);
+    if (combo) {
+      const name = (combo.textContent ?? "").trim().toLowerCase();
+      if (name) {
+        const alias = CODE_LANGUAGE_ALIASES[name];
+        const lang = alias === void 0 ? name : alias;
+        return lang === "" ? null : lang;
+      }
+    }
     const candidates = [el2, ...Array.from(el2.querySelectorAll("code"))];
     for (const node of candidates) {
       const explicit = node.getAttribute("data-language") ?? node.getAttribute("lang");
@@ -960,10 +1271,44 @@
     if (!common) return value;
     return lines.map((line) => line.startsWith(common) ? line.slice(common.length) : line).join("\n");
   }
-  function buildCode(el2) {
-    let value = composedText(el2).replace(/\r\n?/g, "\n");
+  function buildCode(el2, ctx) {
+    const lang = detectLanguage(el2);
+    const source = codeTextOf(el2);
+    let value = source.replace(/\r\n?/g, "\n");
     value = dedent(value.replace(/^\n+/, "").replace(/[ \t]+$/gm, "")).replace(/\s+$/, "");
-    return { type: "code", lang: detectLanguage(el2), value };
+    if (value === "") {
+      const label = lang ? `${lang} ` : "";
+      ctx?.diag.warnings.push(
+        `A ${label ? `${lang} ` : ""}code block was collapsed or virtualized and could not be read.`
+      );
+      return {
+        type: "code",
+        lang,
+        value: `[loopmark: this ${label}code block was collapsed in the page and could not be read]`
+      };
+    }
+    return { type: "code", lang, value };
+  }
+  function codeTextOf(el2) {
+    let chrome = [];
+    try {
+      chrome = Array.from(el2.querySelectorAll(CODE_CHROME_SELECTOR));
+    } catch {
+      chrome = [];
+    }
+    if (chrome.length === 0) return composedText(el2);
+    const skip = new Set(chrome);
+    const parts = [];
+    const visit = (node) => {
+      if (isElement2(node) && skip.has(node)) return;
+      if (isText(node)) {
+        parts.push(node.nodeValue ?? "");
+        return;
+      }
+      for (const child of composedChildren(node)) visit(child);
+    };
+    visit(el2);
+    return parts.join("");
   }
   function escapeText(value) {
     return value.replace(/([\\`*_[\]])/g, "\\$1").replace(/<(?=[a-zA-Z/!?])/g, "\\<").replace(/&(?=[a-zA-Z#][a-zA-Z0-9]*;)/g, "\\&");
@@ -993,8 +1338,9 @@
           out += escapeText(node.value);
           break;
         case "code": {
-          const fence = codeFence(node.value);
-          const padded = /^`|`$/.test(node.value) ? ` ${node.value} ` : node.value;
+          const value = node.value.trim();
+          const fence = codeFence(value);
+          const padded = /^`|`$/.test(value) ? ` ${value} ` : value;
           out += `${fence}${padded}${fence}`;
           break;
         }
@@ -1124,13 +1470,45 @@ ${fence}`,
     for (const run2 of value.match(/`+/g) ?? []) longest = Math.max(longest, run2.length);
     return longest;
   }
+  function warnOnMissingComponents(root, blocks, diagnostics) {
+    const emitted = { table: 0, code: 0 };
+    const count = (list) => {
+      for (const block of list) {
+        if (block.type === "table") emitted.table += 1;
+        else if (block.type === "code") emitted.code += 1;
+        else if (block.type === "quote" || block.type === "component") count(block.blocks);
+        else if (block.type === "list") for (const item of block.items) count(item.blocks);
+      }
+    };
+    count(blocks);
+    const present = {
+      table: safeCount(root, TABLE_COUNT_SELECTOR),
+      code: safeCount(root, ".scriptor-component-code-block")
+    };
+    for (const kind of ["table", "code"]) {
+      const missing = present[kind] - emitted[kind];
+      if (missing > 0) {
+        diagnostics.warnings.push(
+          `${missing} of ${present[kind]} ${kind} block(s) could not be read, most likely because Loop had not rendered them. Scroll the whole page and run loopmark again.`
+        );
+      }
+    }
+  }
+  function safeCount(root, selector) {
+    try {
+      return root.querySelectorAll(selector).length;
+    } catch {
+      return 0;
+    }
+  }
   function convert({ root, meta, diagnostics }) {
-    const ctx = { diag: diagnostics, imageUrls: [], depth: 0 };
+    const ctx = { diag: diagnostics, imageUrls: [], depth: 0, tableDepth: 0 };
     const blocks = collectBlocks(root, ctx);
     const doc = { meta, blocks };
     let markdown = `# ${meta.title.replace(/\n/g, " ").trim() || "Untitled"}
 
 ${renderBlocks(blocks)}`;
+    warnOnMissingComponents(root, blocks, diagnostics);
     const uniqueImages = Array.from(new Set(ctx.imageUrls));
     if (uniqueImages.length > 0) {
       markdown += `
@@ -1437,6 +1815,7 @@ details pre { margin: 8px 0 0; padding: 10px; background: #f3f5f8; border-radius
       unrecognizedSamples: [],
       expandedWidgets: 0,
       elementsVisited: 0,
+      droppedDataImages: 0,
       warnings: []
     };
     let { root, strategy, rejected } = findContentRoot(document);
