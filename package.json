@@ -13,7 +13,7 @@
     "lint": "eslint src scripts test",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify": "npm run typecheck && npm run lint && npm run test && npm run build && npm run check:no-network && npm run check:fixtures"
+    "verify": "npm run typecheck && npm run lint && npm run build && npm run test && npm run check:no-network && npm run check:fixtures"
   },
   "dependencies": {},
   "devDependencies": {

@@ -28,11 +28,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Unit tests
-        run: npm test
-
+      # Build first: test/integration.test.ts evaluates dist/loopmark.bundle.js,
+      # so a stale bundle would otherwise be what gets tested.
       - name: Build bookmarklet
         run: npm run build
+
+      - name: Unit and integration tests
+        run: npm test
 
       # The load-bearing check. See SECURITY.md.
       - name: Zero-network gate
