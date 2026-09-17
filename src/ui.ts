@@ -8,6 +8,14 @@
 
 import type { Diagnostics } from './types.js';
 
+/**
+ * Build date, replaced at bundle time by esbuild's `define`. A bookmarklet is
+ * never updated after it is dragged to the bookmarks bar, so an export that
+ * looks wrong needs to say which build produced it.
+ */
+declare const __LOOPMARK_BUILD__: string;
+const BUILD = typeof __LOOPMARK_BUILD__ === 'string' ? __LOOPMARK_BUILD__ : 'dev';
+
 export const OVERLAY_TAG = 'loopmark-overlay';
 
 const STYLE = `
@@ -219,6 +227,7 @@ export function showOverlay(options: OverlayOptions): void {
     el('summary', { textContent: 'Details' }),
     el('pre', {
       textContent: [
+        `loopmark build        : ${BUILD}`,
         `content root strategy : ${diagnostics.contentRootStrategy}`,
         `elements visited      : ${diagnostics.elementsVisited}`,
         `shadow roots pierced  : ${diagnostics.shadowRootsPierced}`,

@@ -146,6 +146,31 @@ zero. If that is unacceptable for your documents, empty
 `EXPANDABLE_ALLOWLIST` in [`src/selectors.ts`](src/selectors.ts) and rebuild;
 the only cost is that long code blocks export truncated.
 
+### Hosted distribution
+
+If the install page is published to GitHub Pages, the trust question changes
+shape. The bookmarklet itself is unaffected — it still makes no network
+requests once installed — but the *distribution* channel becomes something to
+reason about: anyone who can push to `main`, or who compromises the Actions
+workflow, changes what everybody drags next time, and nobody re-reads a
+bookmarklet they installed months ago.
+
+Three things keep that honest:
+
+- The publish job `needs` the verify job, so an artifact that fails the
+  zero-network gate, the fixture scrub or the dist/-matches-source check is
+  never published.
+- It uploads the committed `dist/`, not a fresh build, so the hosted payload is
+  the reviewed payload.
+- `dist/CHECKSUMS.txt` carries the SHA-256 of the exact `javascript:` URL, and
+  the install page prints it. `shasum -a 256 dist/loopmark.bookmarklet.txt`
+  from a checkout tells you whether the hosted copy matches the source.
+
+What this does **not** solve: hosting makes the tool easy for people who will
+never read any of the above. If it is published somewhere public, the audience
+grows beyond the people who would notice bad output — weigh that against how
+much you want the distribution.
+
 ## Reporting a vulnerability
 
 Open a GitHub issue for anything non-sensitive — selector problems, incorrect

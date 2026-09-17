@@ -54,3 +54,45 @@ jobs:
             exit 1
           fi
           echo "dist/ is reproducible from source."
+
+  # Publish dist/ to GitHub Pages so the install page can be opened directly,
+  # rather than cloned and built.
+  #
+  # `needs: verify` is the point of this job's shape: nothing reaches the
+  # hosted page unless the zero-network gate, the fixture scrub and the
+  # dist/-matches-source check have all passed. A hosted installer that could
+  # publish an unverified payload would be strictly worse than asking people
+  # to build it themselves.
+  #
+  # Inert until Pages is enabled for the repository with "GitHub Actions" as
+  # the source; until then this job is skipped.
+  publish:
+    needs: verify
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The committed dist/ is what gets published, not a fresh build: `verify`
+      # has already proved it is reproducible from source, and publishing the
+      # reviewed bytes keeps the hosted payload identical to the one in the
+      # repository that CHECKSUMS.txt describes.
+      - name: Stage the install page
+        run: |
+          mkdir -p _site
+          cp dist/install.html _site/index.html
+          cp dist/loopmark.bookmarklet.txt dist/loopmark.bundle.js dist/CHECKSUMS.txt _site/
+          echo "Published $(cat dist/CHECKSUMS.txt | grep -v '^#')"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

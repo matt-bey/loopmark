@@ -1759,6 +1759,7 @@ ${fence}`,
   }
 
   // src/ui.ts
+  var BUILD = true ? "4781b660ddbf" : "dev";
   var OVERLAY_TAG = "loopmark-overlay";
   var STYLE = `
 :host { all: initial; }
@@ -1912,6 +1913,7 @@ details pre { margin: 8px 0 0; padding: 10px; background: #f3f5f8; border-radius
       el("summary", { textContent: "Details" }),
       el("pre", {
         textContent: [
+          `loopmark build        : ${BUILD}`,
           `content root strategy : ${diagnostics.contentRootStrategy}`,
           `elements visited      : ${diagnostics.elementsVisited}`,
           `shadow roots pierced  : ${diagnostics.shadowRootsPierced}`,

@@ -14,7 +14,8 @@
  */
 
 import { build } from 'esbuild';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -31,8 +32,39 @@ const DIST = resolve(ROOT, 'dist');
  */
 const MAX_ENCODED_BYTES = 96 * 1024;
 
+/**
+ * A deterministic identity for the source this bundle was built from.
+ *
+ * Stamped into the bundle so a running bookmarklet can say which build it is:
+ * a bookmarklet is never updated after it is dragged, so an export that looks
+ * wrong needs to name the code that produced it.
+ *
+ * NOT a timestamp. `dist/` is committed and CI asserts that a rebuild produces
+ * no diff, so anything that varies between builds of identical source breaks
+ * that check the day after it is committed -- which the build date silently
+ * did. Hashing the sources instead means the same code always yields the same
+ * bytes, and anyone can recompute this from a checkout to see which commit an
+ * installed bookmarklet came from.
+ */
+function sourceId() {
+  const dir = resolve(ROOT, 'src');
+  const files = readdirSync(dir, { recursive: true })
+    .map(String)
+    .filter((f) => f.endsWith('.ts'))
+    .sort();
+  const hash = createHash('sha256');
+  for (const file of files) {
+    hash.update(file);
+    hash.update(readFileSync(resolve(dir, file)));
+  }
+  return hash.digest('hex').slice(0, 12);
+}
+
+const BUILD_STAMP = sourceId();
+
 const SHARED = {
   entryPoints: [resolve(ROOT, 'src/main.ts')],
+  define: { __LOOPMARK_BUILD__: JSON.stringify(BUILD_STAMP) },
   bundle: true,
   format: 'iife',
   target: 'es2020',
@@ -139,10 +171,14 @@ function installHtml(url, stats) {
 <ul>
   <li>Bookmarklet size: <code>${stats.encodedKb} KB</code> encoded (limit ${(MAX_ENCODED_BYTES / 1024).toFixed(0)} KB)</li>
   <li>Minified bundle: <code>${stats.minifiedKb} KB</code></li>
-  <li>Built: <code>${stats.builtAt}</code></li>
+  <li>Source ID: <code>${stats.builtAt}</code></li>
+  <li>SHA-256 of the bookmarklet: <code>${stats.sha256}</code></li>
 </ul>
 <p>Rebuild from source with <code>npm run build</code> and diff this file to verify
-   the bookmarklet matches the code you reviewed.</p>
+   the bookmarklet matches the code you reviewed. If you are reading this on a
+   hosted page rather than your own machine, check the hash above against
+   <code>dist/CHECKSUMS.txt</code> in the repository &mdash; that is what makes a
+   hosted install auditable rather than something you simply trust.</p>
 
 </body>
 </html>
@@ -157,13 +193,24 @@ const encodedBytes = Buffer.byteLength(url, 'utf8');
 const stats = {
   encodedKb: (encodedBytes / 1024).toFixed(1),
   minifiedKb: (Buffer.byteLength(minified, 'utf8') / 1024).toFixed(1),
-  builtAt: new Date().toISOString().slice(0, 10),
+  builtAt: BUILD_STAMP,
+  sha256: createHash('sha256').update(url, 'utf8').digest('hex'),
 };
 
 mkdirSync(DIST, { recursive: true });
 writeFileSync(resolve(DIST, 'loopmark.bookmarklet.txt'), url, 'utf8');
 writeFileSync(resolve(DIST, 'loopmark.bundle.js'), readable, 'utf8');
 writeFileSync(resolve(DIST, 'install.html'), installHtml(url, stats), 'utf8');
+// The hash of exactly what a user drags, so a hosted copy can be verified
+// against the repository rather than taken on trust.
+writeFileSync(
+  resolve(DIST, 'CHECKSUMS.txt'),
+  `# loopmark source ${stats.builtAt}\n` +
+    `# sha256 of dist/loopmark.bookmarklet.txt, which is the javascript: URL itself.\n` +
+    `# Verify with:  shasum -a 256 dist/loopmark.bookmarklet.txt\n` +
+    `${stats.sha256}  loopmark.bookmarklet.txt\n`,
+  'utf8',
+);
 
 const pct = ((encodedBytes / MAX_ENCODED_BYTES) * 100).toFixed(0);
 console.log(`loopmark build

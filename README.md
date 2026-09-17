@@ -48,6 +48,27 @@ rendered — and it will break when Microsoft changes their UI.
 If dragging doesn't work, `install.html` also shows the raw `javascript:` URL to
 paste into a hand-made bookmark.
 
+### Installing from a hosted page
+
+CI can publish `dist/` to GitHub Pages, so the install page can be opened
+directly instead of cloned. The publish job runs only after the zero-network
+gate, the fixture scrub and the dist/-matches-source check have all passed, and
+it uploads the committed bytes rather than a fresh build — so what you drag from
+the hosted page is exactly what is in the repository.
+
+**Verify it if you care**, which you should, because a bookmarklet is code you
+grant the rights of every page you run it on:
+
+```
+shasum -a 256 dist/loopmark.bookmarklet.txt   # compare to dist/CHECKSUMS.txt
+```
+
+The hosted install page prints the same hash and a **Source ID**, which is a
+digest of `src/`. Both are reproducible from any checkout, so a hosted install
+stays auditable rather than something you simply trust. The Source ID also
+appears in the overlay's Details pane — a bookmarklet is never updated after you
+drag it, so that is how you tell which build produced an export.
+
 ## What happens when you click it
 
 1. Expands collapsed sections (from a narrow allowlist — see
