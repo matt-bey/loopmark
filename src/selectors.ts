@@ -511,3 +511,20 @@ export const CODE_LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
   plaintext: '',
   none: '',
 };
+
+/**
+ * A collapsed section toggle on a heading:
+ *
+ *   <span class="scriptor-collapseButtonContainer" role="button"
+ *         aria-expanded="false" aria-label="Collapsible header toggle">
+ *
+ * While a section is collapsed, Loop marks the paragraphs beneath it
+ * `hidden` and does not render their components at all -- a code block in a
+ * collapsed section contains no code, only its toolbar. The content is not
+ * merely hidden, it is absent, so there is nothing to recover by reading
+ * harder.
+ * VERIFIED 2026-09-16 against a saved Loop page.
+ */
+export const COLLAPSED_SECTION_SELECTOR =
+  '[class*="scriptor-collapseButtonContainer" i][aria-expanded="false"],' +
+  '[role="button"][aria-expanded="false"][class*="collaps" i]';

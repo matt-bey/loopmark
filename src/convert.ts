@@ -37,6 +37,7 @@ import {
   CODE_LANGUAGE_ALIASES,
   CODE_LANGUAGE_SELECTOR,
   TABLE_COUNT_SELECTOR,
+  COLLAPSED_SECTION_SELECTOR,
 } from './selectors.js';
 import type {
   AlertKind,
@@ -249,6 +250,15 @@ function classify(el: Element): Kind {
 function containsEmbeddedBlock(el: Element): boolean {
   try {
     return el.querySelector(EMBEDDED_BLOCK_SELECTOR) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** Is this heading's section collapsed, hiding everything beneath it? */
+function isCollapsedSection(el: Element): boolean {
+  try {
+    return el.querySelector(COLLAPSED_SECTION_SELECTOR) !== null;
   } catch {
     return false;
   }
@@ -649,13 +659,33 @@ export function collectBlocks(el: Node, ctx: Ctx): Block[] {
 
       flush();
       switch (kind) {
-        case 'heading':
-          out.push({
-            type: 'heading',
-            level: headingLevel(child),
-            children: trimInline(inlineChildren(child, ctx)),
-          });
+        case 'heading': {
+          const children = trimInline(inlineChildren(child, ctx));
+          out.push({ type: 'heading', level: headingLevel(child), children });
+          // A collapsed section's content is not in the page at all. Saying so
+          // here, where it belongs, beats dropping it without a trace.
+          if (isCollapsedSection(child)) {
+            const name = renderInline(children).trim();
+            ctx.diag.collapsedSections.push(name || '(untitled section)');
+            out.push({
+              type: 'paragraph',
+              children: [
+                {
+                  type: 'em',
+                  children: [
+                    {
+                      type: 'text',
+                      value:
+                        '(loopmark: this section is collapsed in Loop, so its content was ' +
+                        'not in the page. Expand it and export again.)',
+                    },
+                  ],
+                },
+              ],
+            });
+          }
           break;
+        }
         case 'list':
           out.push(...buildList(child, ctx));
           break;
@@ -1518,14 +1548,21 @@ function warnOnMissingComponents(
     code: safeCount(root, '.scriptor-component-code-block'),
   };
 
+  const collapsed = diagnostics.collapsedSections;
   for (const kind of ['table', 'code'] as const) {
     const missing = present[kind] - emitted[kind];
-    if (missing > 0) {
-      diagnostics.warnings.push(
-        `${missing} of ${present[kind]} ${kind} block(s) could not be read, most likely ` +
-          `because Loop had not rendered them. Scroll the whole page and run loopmark again.`,
-      );
-    }
+    if (missing === 0) continue;
+
+    // Naming the sections turns "something is missing" into an instruction.
+    const because =
+      collapsed.length > 0
+        ? `They are inside these collapsed sections: ${collapsed.join('; ')}. ` +
+          `Expand them in Loop and run loopmark again.`
+        : `Loop had most likely not rendered them. Scroll the whole page and run ` +
+          `loopmark again.`;
+    diagnostics.warnings.push(
+      `${missing} of ${present[kind]} ${kind} block(s) could not be read. ${because}`,
+    );
   }
 }
 
@@ -1584,6 +1621,7 @@ export function convertElement(root: Element, meta?: Partial<DocMeta>): Conversi
     expandedWidgets: 0,
     elementsVisited: 0,
     droppedDataImages: 0,
+    collapsedSections: [],
     warnings: [],
   };
   return convert({

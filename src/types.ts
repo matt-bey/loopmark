@@ -102,6 +102,8 @@ export interface Diagnostics {
   elementsVisited: number;
   /** Inline base64 `data:` images replaced with a placeholder. */
   droppedDataImages: number;
+  /** Headings whose section was collapsed, and whose content is therefore absent. */
+  collapsedSections: string[];
   /** Non-fatal problems worth telling the user about. */
   warnings: string[];
 }

@@ -231,6 +231,7 @@
     plaintext: "",
     none: ""
   };
+  var COLLAPSED_SECTION_SELECTOR = '[class*="scriptor-collapseButtonContainer" i][aria-expanded="false"],[role="button"][aria-expanded="false"][class*="collaps" i]';
 
   // src/acquire.ts
   var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -616,6 +617,13 @@
       return false;
     }
   }
+  function isCollapsedSection(el2) {
+    try {
+      return el2.querySelector(COLLAPSED_SECTION_SELECTOR) !== null;
+    } catch {
+      return false;
+    }
+  }
   function isCalloutish(el2) {
     if (el2.hasAttribute("data-callout-type")) return true;
     return /callout|admonition|banner-message|infobox/i.test(attrBag(el2));
@@ -871,13 +879,29 @@
         }
         flush();
         switch (kind) {
-          case "heading":
-            out.push({
-              type: "heading",
-              level: headingLevel(child),
-              children: trimInline(inlineChildren(child, ctx))
-            });
+          case "heading": {
+            const children = trimInline(inlineChildren(child, ctx));
+            out.push({ type: "heading", level: headingLevel(child), children });
+            if (isCollapsedSection(child)) {
+              const name = renderInline(children).trim();
+              ctx.diag.collapsedSections.push(name || "(untitled section)");
+              out.push({
+                type: "paragraph",
+                children: [
+                  {
+                    type: "em",
+                    children: [
+                      {
+                        type: "text",
+                        value: "(loopmark: this section is collapsed in Loop, so its content was not in the page. Expand it and export again.)"
+                      }
+                    ]
+                  }
+                ]
+              });
+            }
             break;
+          }
           case "list":
             out.push(...buildList(child, ctx));
             break;
@@ -1496,13 +1520,14 @@ ${fence}`,
       table: safeCount(root, TABLE_COUNT_SELECTOR),
       code: safeCount(root, ".scriptor-component-code-block")
     };
+    const collapsed = diagnostics.collapsedSections;
     for (const kind of ["table", "code"]) {
       const missing = present[kind] - emitted[kind];
-      if (missing > 0) {
-        diagnostics.warnings.push(
-          `${missing} of ${present[kind]} ${kind} block(s) could not be read, most likely because Loop had not rendered them. Scroll the whole page and run loopmark again.`
-        );
-      }
+      if (missing === 0) continue;
+      const because = collapsed.length > 0 ? `They are inside these collapsed sections: ${collapsed.join("; ")}. Expand them in Loop and run loopmark again.` : `Loop had most likely not rendered them. Scroll the whole page and run loopmark again.`;
+      diagnostics.warnings.push(
+        `${missing} of ${present[kind]} ${kind} block(s) could not be read. ${because}`
+      );
     }
   }
   function safeCount(root, selector) {
@@ -1827,6 +1852,7 @@ details pre { margin: 8px 0 0; padding: 10px; background: #f3f5f8; border-radius
       expandedWidgets: 0,
       elementsVisited: 0,
       droppedDataImages: 0,
+      collapsedSections: [],
       warnings: []
     };
     let { root, strategy, rejected } = findContentRoot(document);

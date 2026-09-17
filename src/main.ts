@@ -35,6 +35,7 @@ async function run(): Promise<void> {
     expandedWidgets: 0,
     elementsVisited: 0,
     droppedDataImages: 0,
+    collapsedSections: [],
     warnings: [],
   };
 
