@@ -500,7 +500,11 @@ export const EMBEDDED_BLOCK_SELECTOR = [
   '[role="grid"]',
   '[data-automation-type="Tablero"]',
   '[data-automation-type="user-data-table"]',
-  '.scriptor-hosting-element',
+  // `.scriptor-component-block`, NOT `.scriptor-hosting-element`: Loop hosts
+  // inline components the same way and labels them
+  // `scriptor-hosting-element scriptor-component-inline`. An @mention is one
+  // of those, and treating it as a block split the paragraph around it into
+  // three -- "Web:", the name, then "primary /".
   '.scriptor-component-block',
   '.scriptor-component-code-block',
   '.scriptor-horizontal-divider',

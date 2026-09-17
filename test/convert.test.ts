@@ -672,10 +672,16 @@ describe('class patterns do not over-match their neighbours', () => {
 describe('mentions, callouts and checklists (real markup)', () => {
   const md = (): string => body(fixture('loop-mention-callout.html'));
 
+  it('keeps an inline component inline, rather than splitting the paragraph', () => {
+    // Loop labels this host `scriptor-component-inline`; matching
+    // `.scriptor-hosting-element` alone treated it as a block and broke
+    // "Web: <name> primary / <name> support" into three paragraphs.
+    expect(md()).toMatch(/^Owner: Jake Poe is on point\.$/m);
+  });
+
   it('reads a mention as the display name, not the avatar initials', () => {
     // The avatar holds "JP" and is aria-hidden; reading the whole subtree's
     // text gave "JPJake Poe" in every mention and every Owner column.
-    expect(md()).toContain('Owner: Jake Poe');
     expect(md()).not.toContain('JPJake Poe');
     expect(md()).not.toContain('JP');
   });

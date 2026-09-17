@@ -16,6 +16,13 @@
     <div class="scriptor-paragraph">
       <span class="scriptor-textRun scriptor-inline">Owner: </span>
       <span class="scriptor-inline">
+        <!--
+          Loop labels an inline component `scriptor-component-inline`, and a
+          block one `scriptor-component-block`. Both are hosted by a
+          `.scriptor-hosting-element`, so matching the host alone treats an
+          @mention as a block and splits the paragraph around it.
+        -->
+        <div class="scriptor-hosting-element scriptor-component-inline">
         <div dir="ltr" data-testid="ComponentFluentProviderId"
              class="fui-FluentProvider atMentions-3411fui-FluentProviderr3us"
              style="display: contents;">
@@ -30,7 +37,9 @@
             </div>
           </div>
         </div>
+        </div>
       </span>
+      <span class="scriptor-textRun scriptor-inline"> is on point.</span>
       <br class="scriptor-EOP" />
     </div>
 
