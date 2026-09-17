@@ -105,7 +105,7 @@ a partial export is never reported as a complete one.
 | Lists are never nested in the DOM; depth is `aria-level` | All nesting was lost; every item became its own list. |
 | There are **no `<ol>` elements**; numbering is a CSS custom property | Every numbered list exported as bullets. |
 | `<br class="scriptor-EOP">` ends every paragraph | A stray `\` on every line of output. |
-| Styled runs are split across sibling spans | `**One** **Runtime** **Image****s**`. |
+| Styled runs are split across sibling spans | One bold phrase renders as `**One** **Two** **Thre****e**`. |
 | Pasted images are base64 `data:` URIs | One 234 KB line; 2.9 MB of page became 1.29 MB of Markdown. |
 | Buttons sit inside tables and code blocks | A literal "New" after every table, "Show more lines" inside every fence. |
 

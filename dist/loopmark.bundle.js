@@ -1759,7 +1759,7 @@ ${fence}`,
   }
 
   // src/ui.ts
-  var BUILD = true ? "4781b660ddbf" : "dev";
+  var BUILD = true ? "ee0621ded6fa" : "dev";
   var OVERLAY_TAG = "loopmark-overlay";
   var STYLE = `
 :host { all: initial; }

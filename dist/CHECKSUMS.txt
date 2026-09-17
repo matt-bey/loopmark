@@ -1,4 +1,4 @@
-# loopmark source 4781b660ddbf
+# loopmark source ee0621ded6fa
 # sha256 of dist/loopmark.bookmarklet.txt, which is the javascript: URL itself.
 # Verify with:  shasum -a 256 dist/loopmark.bookmarklet.txt
-4c82d98a8e3f0096705e83236f25dd2f1295b7f26a1fe8c72c723783a2fd5d4d  loopmark.bookmarklet.txt
+8a94e8a1bc4b35cfc5fe0fd76c3d5fc0c79b28128b00a4b1d4d47d76b0ed38b1  loopmark.bookmarklet.txt

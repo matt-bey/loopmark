@@ -9,3 +9,6 @@ coverage/
 # document content and must never be committed.
 temp/
 .scratch*
+
+# Private scrub terms. See scripts/check-fixtures.mjs.
+scrub.local.json

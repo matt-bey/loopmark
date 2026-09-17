@@ -630,10 +630,10 @@ function inlineIsEmpty(nodes: Inline[]): boolean {
  * Merge adjacent inline nodes that carry the same mark.
  *
  * Loop's editor splits a single styled run across many sibling spans -- one
- * per edit, effectively -- so "One Runtime Images" arrives as three
- * separate bold runs and renders as `**One** **Runtime** **Images**`,
- * and an inline path arrives one character at a time. Merging first is what
- * makes the output read like prose instead of like a diff.
+ * per edit, effectively -- so a bold phrase typed in three sittings arrives as
+ * three separate bold runs and renders as `**One** **Two** **Three**`, and an
+ * inline path arrives one character at a time. Merging first is what makes the
+ * output read like prose instead of like a diff.
  */
 function mergeAdjacent(nodes: Inline[]): Inline[] {
   const out: Inline[] = [];
