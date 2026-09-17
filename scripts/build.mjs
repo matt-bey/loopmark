@@ -199,10 +199,6 @@ function installHtml(url, stats) {
      <a href="${REPO_URL}/issues">Report an issue</a></p>
   <p>Not affiliated with, endorsed by, or supported by Microsoft. Loop is their
      trademark; this reads the page your browser has already rendered.</p>
-  <p>Selector knowledge derived from
-     <a href="https://github.com/stuffbucket/loopd">stuffbucket/loopd</a> (MIT);
-     no loopd code is included. See
-     <a href="${REPO_URL}/blob/main/NOTICE">NOTICE</a>.</p>
 </footer>
 
 </body>
