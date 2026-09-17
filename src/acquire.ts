@@ -17,6 +17,7 @@ import {
   MIN_CONTENT_ROOT_CHARS,
   TITLE_CANDIDATES,
   MIN_SCROLLABLE_OVERFLOW,
+  TITLE_EXCLUDE_SELECTORS,
 } from './selectors.js';
 
 export const sleep = (ms: number): Promise<void> =>
@@ -240,12 +241,35 @@ export function composedParent(el: Element): Element | null {
 }
 
 /** Best-effort page title, falling back to `document.title`. */
+let titleExcludeMatcher: string | null = null;
+
+/**
+ * Is this element inside chrome the title search must not read?
+ *
+ * Walks with `composedParent`, so it steps out of shadow roots via their host.
+ * That is the point: loopmark's own progress dialog is a custom element with
+ * an open shadow root, and `closest()` would stop at the shadow boundary and
+ * never see it.
+ */
+function inExcludedSubtree(el: Element): boolean {
+  titleExcludeMatcher ??= TITLE_EXCLUDE_SELECTORS.join(', ');
+  for (let node: Element | null = el; node; node = composedParent(node)) {
+    try {
+      if (node.matches(titleExcludeMatcher)) return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
 export function findTitle(doc: Document = document): string {
   for (const selector of TITLE_CANDIDATES) {
-    const el = pierceQuerySelector(doc, selector);
-    if (!el) continue;
-    const text = composedText(el).replace(/\s+/g, ' ').trim();
-    if (text) return text;
+    for (const el of pierceQuerySelectorAll(doc, selector)) {
+      if (inExcludedSubtree(el)) continue;
+      const text = composedText(el).replace(/\s+/g, ' ').trim();
+      if (text) return text;
+    }
   }
   // Loop appends app chrome to document.title; strip the trailing segment.
   return (doc.title || 'Untitled').replace(/\s*[|–—-]\s*(Microsoft )?Loop\s*$/i, '').trim()

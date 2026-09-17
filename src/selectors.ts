@@ -92,7 +92,48 @@ export const MIN_CONTENT_ROOT_CHARS = 40;
 // ---------------------------------------------------------------------------
 
 /** Ordered title candidates. VERIFIED 2026-09-16 via loopd. */
+/**
+ * Where the page title actually lives.
+ *
+ * Loop renders it as a miniature Scriptor page of its own inside
+ * `#headerContainer`, NOT as an `<h1>` and not with any "title" in its class
+ * name -- every one of the conventional guesses below missed on a real page,
+ * and the export fell through to `document.title`.
+ *
+ * `#headerContainer` also holds the "Update cover" chrome and the cover emoji,
+ * so the inner page body is the target rather than the container.
+ *
+ * VERIFIED 2026-09-16 against a saved Loop page.
+ */
+/**
+ * Subtrees the title search must not read.
+ *
+ * Deliberately NOT `EXCLUDE_SELECTORS`: that list contains `.scriptor-pageTitle`
+ * and `[data-automation-type="Title"]`, which are excluded from the *body* so
+ * the title is not printed twice -- reusing it here would reject the very
+ * element being looked for.
+ *
+ * The entry that matters is `loopmark-overlay`. The title search pierces shadow
+ * roots, and loopmark's own progress dialog is a custom element whose open
+ * shadow root contains `<h1>loopmark</h1>`; without this, the exporter reads
+ * its own UI and titles every export "loopmark".
+ */
+export const TITLE_EXCLUDE_SELECTORS: readonly string[] = [
+  'loopmark-overlay',
+  '[role="dialog"]',
+  '[role="alertdialog"]',
+  '[role="menu"]',
+  '[role="menubar"]',
+  '[role="toolbar"]',
+  '[role="tooltip"]',
+  '[role="navigation"]',
+  '[aria-hidden="true"]',
+  '[hidden]',
+];
+
 export const TITLE_CANDIDATES: readonly string[] = [
+  '#headerContainer .scriptor-pageBody',
+  '[id*="headerContainer" i] [class*="pageBody" i]',
   '.scriptor-pageTitle',
   '[data-automation-type="Title"]',
   '[class*="pageTitle" i]',

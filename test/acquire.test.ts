@@ -408,3 +408,76 @@ describe('expansion is idempotent within a pass', () => {
     expect(clicks).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Reading the page title.
+//
+// Live runs exported every page as "# loopmark". The title search pierces
+// shadow roots, and loopmark's own progress dialog is a custom element whose
+// open shadow root contains <h1>loopmark</h1> -- so the exporter read its own
+// UI. Every conventional title selector missed on a real Loop page, which is
+// what let the search fall through as far as `h1` in the first place.
+// ---------------------------------------------------------------------------
+
+describe('findTitle (real Loop markup)', () => {
+  /** Loop renders the title as a miniature Scriptor page in #headerContainer. */
+  const loopHeader = (title: string): void => {
+    document.body.innerHTML = `
+      <div id="headerContainer">
+        <div><button>Update cover</button><span>💾</span></div>
+        <div class="scriptor-instance-1">
+          <div class="scriptor-pageBody scriptor-simpleViewPage">
+            <div><span>${title}</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="scriptor-pageContainer"><div class="scriptor-paragraph">Body.</div></div>`;
+  };
+
+  /** loopmark's progress dialog: a custom element with an open shadow root. */
+  const mountOverlay = (): void => {
+    const overlay = document.createElement('loopmark-overlay');
+    const shadow = overlay.attachShadow({ mode: 'open' });
+    const h1 = document.createElement('h1');
+    h1.textContent = 'loopmark';
+    shadow.append(h1);
+    document.body.append(overlay);
+  };
+
+  it('reads the title out of the Loop page header', () => {
+    loopHeader('Secure Container Images');
+    expect(findTitle(document)).toBe('Secure Container Images');
+  });
+
+  it('ignores the cover chrome around it', () => {
+    loopHeader('Quarterly Plan');
+    expect(findTitle(document)).not.toContain('Update cover');
+  });
+
+  it('never reads loopmark\'s own overlay, across the shadow boundary', () => {
+    loopHeader('Secure Container Images');
+    mountOverlay();
+    expect(findTitle(document)).toBe('Secure Container Images');
+  });
+
+  it('falls back to document.title rather than to the overlay', () => {
+    // No page header at all -- the worst case, and the one that produced
+    // "# loopmark" in a live run.
+    document.body.innerHTML = '<div class="scriptor-pageContainer">Body.</div>';
+    document.title = 'Some Page | Microsoft Loop';
+    mountOverlay();
+    expect(findTitle(document)).toBe('Some Page');
+  });
+});
+
+describe('title exclusions do not swallow the title', () => {
+  it('still reads .scriptor-pageTitle, which the body excludes', () => {
+    // `.scriptor-pageTitle` is in EXCLUDE_SELECTORS so the body does not print
+    // the title twice. The title search must not reuse that list, or it
+    // rejects the element it is looking for.
+    document.body.innerHTML =
+      '<div class="scriptor-pageTitle">Architecture Review</div>' +
+      '<div class="scriptor-pageContainer"><div class="scriptor-paragraph">Body.</div></div>';
+    expect(findTitle(document)).toBe('Architecture Review');
+  });
+});

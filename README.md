@@ -77,6 +77,8 @@ paste into a hand-made bookmark.
 | Mentions | Flattened to the plain display name. No identity resolution. |
 | Loop components | Best-effort static snapshot in a labelled fenced block. |
 
+| Page title | Read from `#headerContainer`, where Loop renders it as a miniature page of its own -- not an `<h1>`, and with no "title" in its class name. Becomes the document's `# ` heading. |
+
 Every export ends with an HTML-comment provenance block recording the page
 title, source URL, and export timestamp.
 

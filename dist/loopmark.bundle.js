@@ -32,7 +32,21 @@
   var PARAGRAPH_SELECTOR = '.scriptor-paragraph, [class*="scriptor-paragraph" i]';
   var MIN_PARAGRAPHS_FOR_ROOT = 3;
   var MIN_CONTENT_ROOT_CHARS = 40;
+  var TITLE_EXCLUDE_SELECTORS = [
+    "loopmark-overlay",
+    '[role="dialog"]',
+    '[role="alertdialog"]',
+    '[role="menu"]',
+    '[role="menubar"]',
+    '[role="toolbar"]',
+    '[role="tooltip"]',
+    '[role="navigation"]',
+    '[aria-hidden="true"]',
+    "[hidden]"
+  ];
   var TITLE_CANDIDATES = [
+    "#headerContainer .scriptor-pageBody",
+    '[id*="headerContainer" i] [class*="pageBody" i]',
     ".scriptor-pageTitle",
     '[data-automation-type="Title"]',
     '[class*="pageTitle" i]',
@@ -330,12 +344,25 @@
     const root = el2.getRootNode();
     return root instanceof ShadowRoot ? root.host : null;
   }
+  var titleExcludeMatcher = null;
+  function inExcludedSubtree(el2) {
+    titleExcludeMatcher ?? (titleExcludeMatcher = TITLE_EXCLUDE_SELECTORS.join(", "));
+    for (let node = el2; node; node = composedParent(node)) {
+      try {
+        if (node.matches(titleExcludeMatcher)) return true;
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  }
   function findTitle(doc = document) {
     for (const selector of TITLE_CANDIDATES) {
-      const el2 = pierceQuerySelector(doc, selector);
-      if (!el2) continue;
-      const text = composedText(el2).replace(/\s+/g, " ").trim();
-      if (text) return text;
+      for (const el2 of pierceQuerySelectorAll(doc, selector)) {
+        if (inExcludedSubtree(el2)) continue;
+        const text = composedText(el2).replace(/\s+/g, " ").trim();
+        if (text) return text;
+      }
     }
     return (doc.title || "Untitled").replace(/\s*[|–—-]\s*(Microsoft )?Loop\s*$/i, "").trim() || "Untitled";
   }
