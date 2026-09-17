@@ -573,3 +573,83 @@ describe('Loop code blocks (real markup)', () => {
     expect(out).not.toContain('```');
   });
 });
+
+/**
+ * `scriptor-table` is a prefix of `scriptor-table-of-contents-entry-a-tag`.
+ * The fuzzy table rule therefore classified every table-of-contents element as
+ * a table; `buildTable` found no rows, returned null, and `collectBlocks`
+ * dropped the whole subtree. Twenty-five links vanished from the sample page
+ * with nothing in the output or the diagnostics to say so.
+ */
+describe('class-prefix collisions', () => {
+  it('does not treat a table-of-contents element as a table', () => {
+    const md = body(
+      html(
+        '<div class="scriptor-table-of-contents-entry">' +
+          '<a href="https://example.invalid/p/1" class="scriptor-textRun scriptor-inline ' +
+          'scriptor-table-of-contents-entry-a-tag">Summary</a>' +
+          '</div>',
+      ),
+    );
+    expect(md).toContain('[Summary](https://example.invalid/p/1)');
+  });
+
+  it('still recognises a genuine Scriptor table container', () => {
+    const md = body(
+      html(
+        '<div class="scriptor-tableContainer">' +
+          '<div class="scriptor-tableRow"><div class="scriptor-tableCell">A</div>' +
+          '<div class="scriptor-tableCell">B</div></div>' +
+          '<div class="scriptor-tableRow"><div class="scriptor-tableCell">1</div>' +
+          '<div class="scriptor-tableCell">2</div></div>' +
+          '</div>',
+      ),
+    );
+    expect(md).toContain('| A | B |');
+    expect(md).toContain('| 1 | 2 |');
+  });
+
+  it('excludes the generated table of contents as a whole', () => {
+    const md = body(
+      html(
+        '<nav class="scriptor-table-of-contents-root scriptor-inline">' +
+          '<div class="scriptor-table-of-contents-entries">' +
+          '<div class="scriptor-table-of-contents-entry">' +
+          '<a href="https://example.invalid/p/1">Summary</a></div>' +
+          '</div></nav>' +
+          '<div class="scriptor-paragraph">Real body text.</div>',
+      ),
+    );
+    expect(md).toBe('Real body text.');
+  });
+});
+
+/**
+ * Class-prefix collisions are the most common way this converter breaks, and
+ * they break it silently. This pins the ones found against real markup.
+ */
+describe('class patterns do not over-match their neighbours', () => {
+  it('divider matches the rule but not its spacing buffer', async () => {
+    const { DIVIDER_CLASS_PATTERN } = await import('../src/selectors.js');
+    expect(DIVIDER_CLASS_PATTERN.test('scriptor-horizontal-divider')).toBe(true);
+    // 6 of these on the sample page; matching them emits stray `---` lines.
+    expect(DIVIDER_CLASS_PATTERN.test('scriptor-horizontal-divider-buffer')).toBe(false);
+  });
+
+  it('inline code matches the run but not a heading background class', async () => {
+    const { INLINE_CODE_CLASS_PATTERN } = await import('../src/selectors.js');
+    expect(INLINE_CODE_CLASS_PATTERN.test('scriptor-code-editor')).toBe(true);
+    // Loop puts this on headings; matching it renders every heading as code.
+    expect(INLINE_CODE_CLASS_PATTERN.test('scriptor-code-editor-background-color-set')).toBe(false);
+  });
+
+  it('a stray divider buffer does not emit a horizontal rule', () => {
+    const md = body(
+      html(
+        '<div class="scriptor-horizontal-divider-buffer"></div>' +
+          '<div class="scriptor-paragraph">Body.</div>',
+      ),
+    );
+    expect(md).toBe('Body.');
+  });
+});

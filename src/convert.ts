@@ -211,9 +211,15 @@ function classify(el: Element): Kind {
   if (tag === 'PRE' || CODE_BLOCK_CLASS_PATTERN.test(cls)) return 'code';
   if (tag === 'HR' || role === 'separator' || DIVIDER_CLASS_PATTERN.test(cls)) return 'break';
   if (tag === 'TABLE' || role === 'table' || role === 'grid') return 'table';
-  // A Scriptor table container, but never a row or a cell. UNVERIFIED.
+  // A Scriptor table container, but never a row, a cell, or a table OF
+  // something. The negative lookahead is load-bearing: `scriptor-table` is a
+  // prefix of `scriptor-table-of-contents-entry-a-tag`, so without it every
+  // table-of-contents element was classified as a table, `buildTable` found no
+  // rows and returned null, and the entire subtree was dropped without a
+  // trace. Real Loop tables are found by `data-automation-type` above; this
+  // rule is only a fallback for markup that has not been observed.
   if (
-    /scriptor-table/i.test(cls) &&
+    /scriptor-table(?!-of-)/i.test(cls) &&
     !TABLE_ROW_CLASS_PATTERN.test(cls) &&
     !TABLE_CELL_CLASS_PATTERN.test(cls)
   ) {

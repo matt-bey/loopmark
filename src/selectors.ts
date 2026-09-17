@@ -221,6 +221,16 @@ export const EXCLUDE_SELECTORS: readonly string[] = [
   '[id*="AriaDescription" i]',
 
   /**
+   * A Loop table-of-contents block. Deliberately excluded rather than
+   * exported: it is generated from the headings that are already in the
+   * output, and its links point at `loop.cloud.microsoft` URLs that resolve
+   * for nobody reading the Markdown. Remove this pair to keep it.
+   * VERIFIED 2026-09-16 against a saved Loop page.
+   */
+  '.scriptor-table-of-contents-root',
+  '[class*="table-of-contents-root" i]',
+
+  /**
    * IMPORTANT: Loop renders a duplicate, `aria-hidden` copy of list items that
    * belong to an earlier list via `aria-owns`. Excluding aria-hidden subtrees
    * is what stops every bullet in an owned list appearing twice.
@@ -365,7 +375,15 @@ export const INLINE_CODE_CLASS_PATTERN =
   /scriptor-inlineCode|scriptor-code-editor(?![-a-z])/i;
 
 /** Horizontal rules. */
-export const DIVIDER_CLASS_PATTERN = /scriptor-divider|scriptor-horizontalRule/i;
+/**
+ * Loop's divider is `.scriptor-horizontal-divider`, which `scriptor-divider`
+ * does not match -- the word order differs. Dividers survive today only
+ * because Loop also emits `<hr role="separator">`; this is the fallback for
+ * when it does not.
+ * VERIFIED 2026-09-16 against a saved Loop page.
+ */
+export const DIVIDER_CLASS_PATTERN =
+  /scriptor-horizontal-divider(?![-a-z])|scriptor-divider(?![-a-z])|scriptor-horizontalRule/i;
 
 /** Table rows and cells, for tables rendered without `<table>` tags. */
 export const TABLE_ROW_CLASS_PATTERN = /scriptor-tableRow/i;

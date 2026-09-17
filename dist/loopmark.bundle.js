@@ -118,6 +118,15 @@
     // referenced by `aria-describedby`, so it is visible to a text walk.
     '[id*="AriaDescription" i]',
     /**
+     * A Loop table-of-contents block. Deliberately excluded rather than
+     * exported: it is generated from the headings that are already in the
+     * output, and its links point at `loop.cloud.microsoft` URLs that resolve
+     * for nobody reading the Markdown. Remove this pair to keep it.
+     * VERIFIED 2026-09-16 against a saved Loop page.
+     */
+    ".scriptor-table-of-contents-root",
+    '[class*="table-of-contents-root" i]',
+    /**
      * IMPORTANT: Loop renders a duplicate, `aria-hidden` copy of list items that
      * belong to an earlier list via `aria-owns`. Excluding aria-hidden subtrees
      * is what stops every bullet in an owned list appearing twice.
@@ -165,7 +174,7 @@
   var CALLOUT_CLASS_PATTERN = /scriptor-callout|scriptor-infoBlock|scriptor-highlightBlock|scriptor-component-block-callout|scriptor-block-callout/i;
   var CODE_BLOCK_CLASS_PATTERN = /scriptor-component-code-block|scriptor-codeBlock|code-snippet/i;
   var INLINE_CODE_CLASS_PATTERN = /scriptor-inlineCode|scriptor-code-editor(?![-a-z])/i;
-  var DIVIDER_CLASS_PATTERN = /scriptor-divider|scriptor-horizontalRule/i;
+  var DIVIDER_CLASS_PATTERN = /scriptor-horizontal-divider(?![-a-z])|scriptor-divider(?![-a-z])|scriptor-horizontalRule/i;
   var TABLE_ROW_CLASS_PATTERN = /scriptor-tableRow/i;
   var TABLE_CELL_CLASS_PATTERN = /scriptor-tableCell/i;
   var LINK_CLASS_PATTERN = /scriptor-hyperlink/i;
@@ -607,7 +616,7 @@
     if (tag === "PRE" || CODE_BLOCK_CLASS_PATTERN.test(cls)) return "code";
     if (tag === "HR" || role === "separator" || DIVIDER_CLASS_PATTERN.test(cls)) return "break";
     if (tag === "TABLE" || role === "table" || role === "grid") return "table";
-    if (/scriptor-table/i.test(cls) && !TABLE_ROW_CLASS_PATTERN.test(cls) && !TABLE_CELL_CLASS_PATTERN.test(cls)) {
+    if (/scriptor-table(?!-of-)/i.test(cls) && !TABLE_ROW_CLASS_PATTERN.test(cls) && !TABLE_CELL_CLASS_PATTERN.test(cls)) {
       return "table";
     }
     if (tag === "UL" || tag === "OL" || tag === "MENU" || role === "list") return "list";

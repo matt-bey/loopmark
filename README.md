@@ -128,6 +128,10 @@ Read this section before relying on the output.
   this project ends. `spikes/probe.js` checks for that.
 - **Comments, version history, and page metadata are not exported.** Only the
   document body.
+- **A Loop table-of-contents block is dropped on purpose.** It is generated
+  from headings that are already in the output, and its links point at
+  `loop.cloud.microsoft` URLs that resolve for nobody reading the Markdown.
+  Remove `.scriptor-table-of-contents-root` from `EXCLUDE_SELECTORS` to keep it.
 - **Unaffiliated with Microsoft.** Not supported, endorsed, or acknowledged by
   them. Check your organization's acceptable-use policy before adopting it.
 
