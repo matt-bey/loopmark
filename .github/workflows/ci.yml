@@ -12,12 +12,19 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both maintained LTS lines. Node 20 is end-of-life, and testing only
+        # the version this was written on would make the `engines` field a
+        # claim nobody had checked.
+        node-version: [22, 24]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: ${{ matrix.node-version }}
           cache: npm
 
       - run: npm ci
@@ -86,7 +93,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The committed dist/ is what gets published, not a fresh build: `verify`
       # has already proved it is reproducible from source, and publishing the
@@ -99,9 +106,9 @@ jobs:
           cp dist/loopmark.bookmarklet.txt dist/loopmark.bundle.js dist/CHECKSUMS.txt _site/
           echo "Published $(cat dist/CHECKSUMS.txt | grep -v '^#')"
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
 
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
