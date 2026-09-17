@@ -50,11 +50,14 @@ paste into a hand-made bookmark.
 
 ### Installing from a hosted page
 
-CI can publish `dist/` to GitHub Pages, so the install page can be opened
-directly instead of cloned. The publish job runs only after the zero-network
-gate, the fixture scrub and the dist/-matches-source check have all passed, and
-it uploads the committed bytes rather than a fresh build — so what you drag from
-the hosted page is exactly what is in the repository.
+The install page is published at
+**<https://matt-bey.github.io/loopmark/>** — open it and drag the button,
+no clone or toolchain required.
+
+That page is published by CI only after the zero-network gate, the fixture
+scrub and the dist/-matches-source check have all passed, and it uploads the
+committed bytes rather than a fresh build — so what you drag from the hosted
+page is exactly what is in this repository.
 
 **Verify it if you care**, which you should, because a bookmarklet is code you
 grant the rights of every page you run it on:

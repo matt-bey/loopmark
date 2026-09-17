@@ -14,6 +14,14 @@
     "zero-network"
   ],
   "author": "Matt Bey",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/matt-bey/loopmark.git"
+  },
+  "homepage": "https://matt-bey.github.io/loopmark/",
+  "bugs": {
+    "url": "https://github.com/matt-bey/loopmark/issues"
+  },
   "license": "MIT",
   "type": "module",
   "scripts": {

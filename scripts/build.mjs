@@ -32,6 +32,9 @@ const DIST = resolve(ROOT, 'dist');
  */
 const MAX_ENCODED_BYTES = 96 * 1024;
 
+/** Where this page points people when they want to read the code. */
+const REPO_URL = 'https://github.com/matt-bey/loopmark';
+
 /**
  * A deterministic identity for the source this bundle was built from.
  *
@@ -128,7 +131,8 @@ function installHtml(url, stats) {
 
 <h1>loopmark</h1>
 <p class="sub">Convert the Microsoft Loop page you are looking at into clean Markdown.
-   Makes zero network requests.</p>
+   Makes zero network requests.<br>
+   <a href="${REPO_URL}">Source, documentation and issues on GitHub</a></p>
 
 <div class="drag">
   <a class="bookmarklet" href="${escapeHtml(url)}">loopmark</a>
@@ -148,7 +152,7 @@ function installHtml(url, stats) {
 
 <h2>What happens when you click it</h2>
 <ol>
-  <li>Expands collapsed sections and scrolls the page to force virtualized content to render.</li>
+  <li>Scrolls the page to force virtualized content to render, then scrolls back.</li>
   <li>Reads the rendered DOM, including open shadow roots.</li>
   <li>Converts it to GitHub-flavored Markdown.</li>
   <li>Copies it to your clipboard and shows it in an overlay. <code>Esc</code> closes the overlay.</li>
@@ -164,7 +168,9 @@ function installHtml(url, stats) {
 </table>
 
 <p class="note"><strong>Read-only.</strong> loopmark never writes to your Loop document.
-  It scrolls the page (and scrolls back) and expands collapsed sections so it can read them.
+  It scrolls the page and scrolls back, and that is all it touches: it will not even expand a
+  collapsed section, because Loop syncs that state to everyone else on the document. Collapsed
+  sections are named in the output instead, so you can open the ones you want and export again.
   It makes no network requests of any kind &mdash; nothing it reads can leave your browser.</p>
 
 <h2>Build provenance</h2>
@@ -177,8 +183,12 @@ function installHtml(url, stats) {
 <p>Rebuild from source with <code>npm run build</code> and diff this file to verify
    the bookmarklet matches the code you reviewed. If you are reading this on a
    hosted page rather than your own machine, check the hash above against
-   <code>dist/CHECKSUMS.txt</code> in the repository &mdash; that is what makes a
-   hosted install auditable rather than something you simply trust.</p>
+   <a href="${REPO_URL}/blob/main/dist/CHECKSUMS.txt">dist/CHECKSUMS.txt</a> in the
+   repository &mdash; that is what makes a hosted install auditable rather than
+   something you simply trust.</p>
+<p>The Source ID is a digest of <a href="${REPO_URL}/tree/main/src">src/</a>, reproducible
+   from any checkout, and it is shown in the overlay's Details pane &mdash; so an export
+   that looks wrong can always be traced to the code that produced it.</p>
 
 </body>
 </html>
