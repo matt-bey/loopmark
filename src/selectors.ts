@@ -213,9 +213,15 @@ export const EXCLUDE_SELECTORS: readonly string[] = [
   // a vote toggle inside every voting cell -- all of which otherwise land in
   // the text flow. Voting is recovered separately, see VOTING_SELECTOR.
   'button',
-  '[role="button"]',
   'input',
   'select',
+  // NOT `[role="button"]`. A <button> element is unambiguously a control, but
+  // Loop gives `role="button"` to interactive *content*: an @mention chip is
+  // `<div data-testid="resolvedAtMention" role="button">`, and excluding the
+  // role dropped every mention on the page. Everything the role rule used to
+  // catch -- the "Add alt text" widget, the unread bluedot -- is already
+  // excluded by class.
+  // VERIFIED 2026-09-16 against two saved Loop pages.
   // Fluent UI renders screen-reader-only help text into a div that is merely
   // referenced by `aria-describedby`, so it is visible to a text walk.
   '[id*="AriaDescription" i]',
@@ -586,3 +592,17 @@ export const CODE_LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
 export const COLLAPSED_SECTION_SELECTOR =
   '[class*="scriptor-collapseButtonContainer" i][aria-expanded="false"],' +
   '[role="button"][aria-expanded="false"][class*="collaps" i]';
+
+/**
+ * Fluent UI's theme wrapper. It is `display: contents` -- pure styling, never
+ * semantics -- but its generated class names leak the component it wraps:
+ * `blockCallout-6339fui-FluentProviderr5ie`, `table-9337fui-FluentProviderr4f`.
+ *
+ * Any class-substring rule therefore matches both the wrapper and the real
+ * component inside it, which double-wraps the output: a callout rendered as
+ * `> [!NOTE]` nested inside another `> [!NOTE]`. Classification skips these.
+ *
+ * VERIFIED 2026-09-16 against a saved Loop page.
+ */
+export const FLUENT_WRAPPER_SELECTOR =
+  '.fui-FluentProvider, [data-testid="ComponentFluentProviderId"]';

@@ -653,3 +653,39 @@ describe('class patterns do not over-match their neighbours', () => {
     expect(md).toBe('Body.');
   });
 });
+
+describe('mentions, callouts and checklists (real markup)', () => {
+  const md = (): string => body(fixture('loop-mention-callout.html'));
+
+  it('reads a mention as the display name, not the avatar initials', () => {
+    // The avatar holds "JP" and is aria-hidden; reading the whole subtree's
+    // text gave "JPJake Poe" in every mention and every Owner column.
+    expect(md()).toContain('Owner: Jake Poe');
+    expect(md()).not.toContain('JPJake Poe');
+    expect(md()).not.toContain('JP');
+  });
+
+  it('keeps the mention, even though its body is role="button"', () => {
+    // `[role="button"]` was excluded to silence table and code-block controls,
+    // which dropped every mention with it.
+    expect(md()).toContain('Jake Poe');
+  });
+
+  it('wraps a callout once, not once per Fluent wrapper', () => {
+    const out = md();
+    expect(out).toContain('> [!NOTE]\n> Callout test');
+    expect(out).not.toContain('> > ');
+  });
+
+  it('renders checklist state from aria-checked', () => {
+    const out = md();
+    expect(out).toMatch(/^- \[ \] Parent task$/m);
+    expect(out).toMatch(/^ {2}- \[x\] Nested done task$/m);
+  });
+
+  it('indents a nested task to the content column, not past the checkbox', () => {
+    // `- [ ] `.length is 6, which is four columns past the content column and
+    // reads as an indented code block rather than a sub-list.
+    expect(md()).not.toMatch(/^ {6}- \[/m);
+  });
+});

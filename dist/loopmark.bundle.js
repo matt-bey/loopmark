@@ -111,9 +111,15 @@
     // a vote toggle inside every voting cell -- all of which otherwise land in
     // the text flow. Voting is recovered separately, see VOTING_SELECTOR.
     "button",
-    '[role="button"]',
     "input",
     "select",
+    // NOT `[role="button"]`. A <button> element is unambiguously a control, but
+    // Loop gives `role="button"` to interactive *content*: an @mention chip is
+    // `<div data-testid="resolvedAtMention" role="button">`, and excluding the
+    // role dropped every mention on the page. Everything the role rule used to
+    // catch -- the "Add alt text" widget, the unread bluedot -- is already
+    // excluded by class.
+    // VERIFIED 2026-09-16 against two saved Loop pages.
     // Fluent UI renders screen-reader-only help text into a div that is merely
     // referenced by `aria-describedby`, so it is visible to a text walk.
     '[id*="AriaDescription" i]',
@@ -241,6 +247,7 @@
     none: ""
   };
   var COLLAPSED_SECTION_SELECTOR = '[class*="scriptor-collapseButtonContainer" i][aria-expanded="false"],[role="button"][aria-expanded="false"][class*="collaps" i]';
+  var FLUENT_WRAPPER_SELECTOR = '.fui-FluentProvider, [data-testid="ComponentFluentProviderId"]';
 
   // src/acquire.ts
   var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -602,6 +609,7 @@
     const tag = el2.tagName.toUpperCase();
     if (SKIP_TAGS.has(tag)) return "skip";
     if (excluded(el2)) return "skip";
+    if (isFluentWrapper(el2)) return "container";
     const role = (el2.getAttribute("role") ?? "").toLowerCase();
     const cls = classOf(el2);
     if (role === "heading" || /^H[1-6]$/.test(tag) || HEADING_CLASS_PATTERN.test(cls) || (el2.getAttribute("data-automation-type") ?? "").toLowerCase().includes("heading")) {
@@ -642,6 +650,13 @@
   function isCollapsedSection(el2) {
     try {
       return el2.querySelector(COLLAPSED_SECTION_SELECTOR) !== null;
+    } catch {
+      return false;
+    }
+  }
+  function isFluentWrapper(el2) {
+    try {
+      return el2.matches(FLUENT_WRAPPER_SELECTOR);
     } catch {
       return false;
     }
@@ -736,6 +751,25 @@
     const count = match?.[1] ? parseInt(match[1], 10) : 0;
     return count === 1 ? "1 vote" : `${count} votes`;
   }
+  function visibleText(node) {
+    let out = "";
+    const visit = (n) => {
+      if (isText(n)) {
+        out += n.nodeValue ?? "";
+        return;
+      }
+      if (!isElement2(n)) return;
+      if (SKIP_TAGS.has(n.tagName.toUpperCase()) || excluded(n)) return;
+      for (const child of composedChildren(n)) visit(child);
+    };
+    visit(node);
+    return out;
+  }
+  function mentionName(el2) {
+    const text = visibleText(el2).replace(/\s+/g, " ").trim();
+    if (text) return text;
+    return (el2.getAttribute("aria-label") ?? "").replace(/\s+/g, " ").trim();
+  }
   function isDataUri(src) {
     return /^data:/i.test(src.trim());
   }
@@ -768,7 +802,7 @@
         return [{ type: "image", alt, src }];
       }
       if (isMention(node)) {
-        const name = composedText(node).replace(/\s+/g, " ").trim();
+        const name = mentionName(node);
         return name ? [{ type: "mention", name }] : [];
       }
       const cls = classOf(node);
@@ -1541,7 +1575,7 @@ ${fence}`,
             const box = item.checked === null ? "" : item.checked ? "[x] " : "[ ] ";
             const body = renderBlocks(item.blocks, true);
             const firstPrefix = `${marker} ${box}`;
-            const contPrefix = " ".repeat(firstPrefix.length);
+            const contPrefix = " ".repeat(marker.length + 1);
             lines.push(indentLines(body, contPrefix, firstPrefix));
           });
           push(lines.join("\n"), "list");

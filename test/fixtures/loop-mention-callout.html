@@ -1,0 +1,73 @@
+<!--
+  @mentions, callouts and checklists, from a saved Loop page on 2026-09-16.
+
+  Load-bearing details:
+    - a mention's avatar holds the person's INITIALS and is aria-hidden, so
+      reading the subtree's text yields "JPJake Poe"
+    - the mention body is `role="button"`, which is content here, not a control
+    - Fluent's theme wrapper names the component in its own class
+      ("blockCallout-6339..."), so it matches callout rules too and the output
+      ends up wrapped twice
+    - a checklist item is a list item whose marker carries role="checkbox"
+-->
+<div class="scriptor-pageContainer">
+  <div class="scriptor-pageBody">
+
+    <div class="scriptor-paragraph">
+      <span class="scriptor-textRun scriptor-inline">Owner: </span>
+      <span class="scriptor-inline">
+        <div dir="ltr" data-testid="ComponentFluentProviderId"
+             class="fui-FluentProvider atMentions-3411fui-FluentProviderr3us"
+             style="display: contents;">
+          <div class="hash-a">
+            <div class="hash-b" data-testid="resolvedAtMention" role="button" tabindex="0">
+              <span class="hash-c">
+                <span class="fui-Avatar" aria-hidden="true" aria-label="Jake Poe">
+                  <span class="fui-Avatar__initials">JP</span>
+                </span>
+              </span>
+              <span class="hash-d"><div class="hash-e">Jake Poe</div></span>
+            </div>
+          </div>
+        </div>
+      </span>
+      <br class="scriptor-EOP" />
+    </div>
+
+    <div class="scriptor-paragraph">
+      <span class="scriptor-inline">
+        <div class="scriptor-hosting-element scriptor-component-block">
+          <div dir="ltr" data-testid="ComponentFluentProviderId"
+               class="fui-FluentProvider blockCallout-6339fui-FluentProviderr5ie"
+               style="display: contents;">
+            <div class="hash-f">
+              <div class="hash-g" data-testid="block-callout-component">
+                <div class="scriptor-paragraph">
+                  <span class="scriptor-textRun scriptor-inline">Callout test</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </span>
+    </div>
+
+    <div class="scriptor-paragraph scriptor-listItem">
+      <ul>
+        <li class="scriptor-listItem-marker" role="checkbox" aria-checked="false"
+            aria-label="Checklist" aria-level="1" aria-posinset="1" aria-setsize="2">
+          <span class="scriptor-textRun scriptor-inline">Parent task</span>
+        </li>
+      </ul>
+    </div>
+    <div class="scriptor-paragraph scriptor-listItem">
+      <ul>
+        <li class="scriptor-listItem-marker" role="checkbox" aria-checked="true"
+            aria-label="Checklist" aria-level="2" aria-posinset="1" aria-setsize="1">
+          <span class="scriptor-textRun scriptor-inline">Nested done task</span>
+        </li>
+      </ul>
+    </div>
+
+  </div>
+</div>

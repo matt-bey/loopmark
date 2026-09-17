@@ -38,6 +38,7 @@ import {
   CODE_LANGUAGE_SELECTOR,
   TABLE_COUNT_SELECTOR,
   COLLAPSED_SECTION_SELECTOR,
+  FLUENT_WRAPPER_SELECTOR,
 } from './selectors.js';
 import type {
   AlertKind,
@@ -183,6 +184,11 @@ function classify(el: Element): Kind {
   if (SKIP_TAGS.has(tag)) return 'skip';
   if (excluded(el)) return 'skip';
 
+  // A Fluent theme wrapper carries no meaning, but its generated class names
+  // leak the name of the component inside it, so every class-substring rule
+  // matches it too. Descend rather than classify.
+  if (isFluentWrapper(el)) return 'container';
+
   const role = (el.getAttribute('role') ?? '').toLowerCase();
   const cls = classOf(el);
 
@@ -265,6 +271,14 @@ function containsEmbeddedBlock(el: Element): boolean {
 function isCollapsedSection(el: Element): boolean {
   try {
     return el.querySelector(COLLAPSED_SECTION_SELECTOR) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function isFluentWrapper(el: Element): boolean {
+  try {
+    return el.matches(FLUENT_WRAPPER_SELECTOR);
   } catch {
     return false;
   }
@@ -426,6 +440,49 @@ function votingSummary(el: Element): string | null {
   return count === 1 ? '1 vote' : `${count} votes`;
 }
 
+/**
+ * Text of a subtree, skipping anything the exporter excludes.
+ *
+ * `composedText` concatenates every text node, including those inside
+ * `aria-hidden` chrome. That is right for a code block and wrong for anything
+ * with a decorative layer -- see `mentionName`.
+ */
+function visibleText(node: Node): string {
+  let out = '';
+  const visit = (n: Node): void => {
+    if (isText(n)) {
+      out += n.nodeValue ?? '';
+      return;
+    }
+    if (!isElement(n)) return;
+    if (SKIP_TAGS.has(n.tagName.toUpperCase()) || excluded(n)) return;
+    for (const child of composedChildren(n)) visit(child);
+  };
+  visit(node);
+  return out;
+}
+
+/**
+ * The display name of an @mention.
+ *
+ * Loop renders a mention as an avatar followed by the name, and the avatar
+ * contains the person's initials:
+ *
+ *   <div class="...atMentions...">
+ *     <span class="fui-Avatar" aria-hidden="true" aria-label="Jake Poe">JP</span>
+ *     <span>Jake Poe</span>
+ *
+ * Reading it with `composedText` concatenates both and yields "JPJake Poe",
+ * which appeared in every mention and every Owner column of the sample page.
+ * The avatar is `aria-hidden`, so skipping excluded subtrees is enough; the
+ * accessible name is the fallback for markup that is shaped differently.
+ */
+function mentionName(el: Element): string {
+  const text = visibleText(el).replace(/\s+/g, ' ').trim();
+  if (text) return text;
+  return (el.getAttribute('aria-label') ?? '').replace(/\s+/g, ' ').trim();
+}
+
 function isDataUri(src: string): boolean {
   return /^data:/i.test(src.trim());
 }
@@ -475,7 +532,7 @@ function toInline(node: Node, ctx: Ctx): Inline[] {
     }
 
     if (isMention(node)) {
-      const name = composedText(node).replace(/\s+/g, ' ').trim();
+      const name = mentionName(node);
       return name ? [{ type: 'mention', name }] : [];
     }
 
@@ -1562,9 +1619,13 @@ export function renderBlocks(blocks: Block[], tight = false): string {
           const box = item.checked === null ? '' : item.checked ? '[x] ' : '[ ] ';
           const body = renderBlocks(item.blocks, true);
           const firstPrefix = `${marker} ${box}`;
-          // Continuation lines align under the text, not the marker, so nested
-          // lists and multi-paragraph items stay inside the item.
-          const contPrefix = ' '.repeat(firstPrefix.length);
+          // Continuation lines are indented to the list item's CONTENT column,
+          // which is just past the marker -- `- ` is 2, `10. ` is 4. The task
+          // checkbox is part of the content, not part of the marker, so it must
+          // not be counted: indenting a nested list by `- [ ] `.length puts it
+          // four columns past the content column, which CommonMark reads as an
+          // indented code block rather than a sub-list.
+          const contPrefix = ' '.repeat(marker.length + 1);
           lines.push(indentLines(body, contPrefix, firstPrefix));
         });
         push(lines.join('\n'), 'list');
