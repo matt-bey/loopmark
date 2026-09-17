@@ -16,7 +16,7 @@ is the threat model, the specific mitigations, and — more importantly — what
 | --- | --- | --- |
 | Loop page content | Exfiltration to a third party | No network egress of any kind. Enforced by CI against the built artifact. |
 | Session cookies / tokens | Theft | Never read. `document.cookie`, `localStorage`, `sessionStorage`, `indexedDB` are all in the CI ban list. |
-| The Loop document itself | Unintended modification | Read-only by construction. The only clicks are on an allowlist of disclosure widgets, double-gated by a veto list. |
+| The Loop document itself | Unintended modification | Read-only by construction. The only click is "Show more lines" inside a code block, double-gated by a veto list. Collapsed sections are never expanded, because that state syncs to collaborators. |
 | The user's browser | Persistence / privilege escalation | No storage writes, no service worker, no extension surface. Everything ends when the tab closes. |
 | The supply chain | A compromised dependency shipping in the blob | Zero runtime dependencies. Build-time devDependencies only, and the built artifact is grepped for network APIs regardless. |
 
@@ -53,15 +53,22 @@ DOM mutation, all of them local and reversible:
 
 1. **Scrolling** the content container to force virtualized rows to render — and
    restoring your original scroll position afterwards.
-2. **Clicking disclosure widgets** to expand collapsed sections. This is the
-   riskiest operation in the tool, so it is double-gated: an element must match
-   the narrow allowlist in [`src/selectors.ts`](src/selectors.ts) **and** carry
-   `aria-expanded="false"` **and** survive a veto list that rejects anything
-   whose label, title, class, or text matches `delete`, `remove`, `share`,
-   `invite`, `publish`, `send`, `move`, `rename`, `new`, `add`, `create`,
-   `insert`, `comment`, `reply`, `resolve`, `settings`, or `sign out`. It never
-   clicks a generic button and never clicks the same element twice, with a hard
-   cap of 200 clicks total.
+2. **Clicking "Show more lines"** inside a code block that is already on
+   screen. This is the riskiest operation in the tool, so it is double-gated:
+   an element must match the narrow allowlist in
+   [`src/selectors.ts`](src/selectors.ts) **and** survive a veto list that
+   rejects anything whose label, title, class, or text matches `delete`,
+   `remove`, `share`, `invite`, `publish`, `send`, `move`, `rename`, `new`,
+   `add`, `create`, `insert`, `comment`, `reply`, `resolve`, `settings`, or
+   `sign out`. It never clicks a generic button and never clicks the same
+   element twice, with a hard cap of 200 clicks total.
+
+   **Collapsed heading sections are deliberately excluded from that
+   allowlist.** Their content is genuinely unreachable while collapsed, but
+   Loop syncs collapsed state through Fluid, so opening a section may be a
+   write to the shared document and visible to collaborators. Completeness
+   does not outrank read-only. loopmark names those sections in its output and
+   warnings instead; expanding them is the reader's decision to make in Loop.
 3. **Mounting one custom element** (`<loopmark-overlay>`) with an open shadow
    root, removed when you close it.
 
@@ -130,10 +137,14 @@ lockfile, and review the lockfile on updates.
 
 ### Loop's own behavior
 
-loopmark clicks disclosure widgets in a live collaborative editor. The allowlist
-and veto list are designed so this cannot reach a destructive control, but they
-are pattern matches against markup Microsoft can change at any time. The residual
-risk is not zero. If that is unacceptable for your documents, do not use it.
+loopmark clicks one kind of control in a live collaborative editor: the
+"Show more lines" pager inside a code block. The allowlist and veto list are
+designed so this cannot reach a destructive control, but they are pattern
+matches against markup Microsoft can change at any time — a future Loop build
+could attach that label to something that matters. The residual risk is not
+zero. If that is unacceptable for your documents, empty
+`EXPANDABLE_ALLOWLIST` in [`src/selectors.ts`](src/selectors.ts) and rebuild;
+the only cost is that long code blocks export truncated.
 
 ## Reporting a vulnerability
 

@@ -197,15 +197,14 @@ describe('click safety', () => {
     expect(isSafeToClick(make('<button class="expandChevron" title="Move up">x</button>'))).toBe(false);
   });
 
-  it('clicks only allowlisted collapsed disclosures', async () => {
+  it('clicks only allowlisted controls', async () => {
     document.body.innerHTML = `
-      <button id="ok" class="collapseToggle" aria-expanded="false">Show more</button>
-      <button id="danger" class="collapseToggle" aria-expanded="false" aria-label="Delete block">x</button>
-      <button id="generic" aria-expanded="false">Something</button>
-      <button id="open" class="collapseToggle" aria-expanded="true">Already open</button>`;
+      <button id="ok" aria-label="Show more lines">Show more lines</button>
+      <button id="danger" aria-label="Show more lines. Delete block">x</button>
+      <button id="generic" aria-expanded="false">Something</button>`;
 
     const clicked: string[] = [];
-    for (const id of ['ok', 'danger', 'generic', 'open']) {
+    for (const id of ['ok', 'danger', 'generic']) {
       document.getElementById(id)!.addEventListener('click', () => clicked.push(id));
     }
 
@@ -214,14 +213,43 @@ describe('click safety', () => {
     expect(count).toBe(1);
   });
 
-  it('is idempotent once aria-expanded flips to true', async () => {
-    document.body.innerHTML =
-      '<button class="collapseToggle" aria-expanded="false">Show</button>';
+  it('is idempotent once the control is gone', async () => {
+    document.body.innerHTML = '<button aria-label="Show more lines">Show more lines</button>';
     const btn = document.querySelector('button')!;
-    btn.addEventListener('click', () => btn.setAttribute('aria-expanded', 'true'));
+    btn.addEventListener('click', () => btn.removeAttribute('aria-label'));
 
     expect(await expandCollapsed(document.body)).toBe(1);
     expect(await expandCollapsed(document.body)).toBe(0);
+  });
+
+  /**
+   * The load-bearing safety test. Loop syncs a heading's collapsed state
+   * through Fluid, so expanding a section may be a write to the shared
+   * document. loopmark must leave it alone even though that costs content --
+   * the section is reported instead. See EXPANDABLE_ALLOWLIST.
+   */
+  it('NEVER expands a collapsed Loop heading section', async () => {
+    document.body.innerHTML = `
+      <div class="scriptor-paragraph scriptor-collapsibleHeading" role="heading" aria-level="2">
+        <span class="scriptor-collapseButtonContainer" role="button"
+              aria-expanded="false" aria-label="Collapsible header toggle" tabindex="0">
+          <span class="scriptor-collapseButtonTapTarget"></span>
+        </span>
+        <span class="scriptor-textRun scriptor-inline">Dockerfile: Current State</span>
+      </div>`;
+
+    let clicks = 0;
+    for (const el of Array.from(document.querySelectorAll('*'))) {
+      el.addEventListener('click', () => {
+        clicks += 1;
+      });
+    }
+
+    expect(await expandCollapsed(document.body)).toBe(0);
+    expect(clicks).toBe(0);
+    expect(
+      document.querySelector('.scriptor-collapseButtonContainer')!.getAttribute('aria-expanded'),
+    ).toBe('false');
   });
 });
 
@@ -364,17 +392,17 @@ describe('expanding Loop code blocks', () => {
 
 describe('expansion is idempotent within a pass', () => {
   it('clicks an element once even when several allowlist rules match it', async () => {
-    // `[class*="collaps"]` and `[class*="expand"]` both match this button.
-    // Clicking a toggle twice closes what the first click opened.
+    // Guards the Set in `expandCollapsed`: allowlist selectors can overlap,
+    // and clicking a toggle twice closes what the first click opened.
     document.body.innerHTML = `
       <div id="root">
-        <button aria-expanded="false" class="collapsible expander" aria-label="Show section"></button>
+        <button aria-label="Show more lines and show more of this block"></button>
       </div>`;
     const button = document.querySelector('button')!;
     let clicks = 0;
     button.addEventListener('click', () => {
       clicks += 1;
-      button.setAttribute('aria-expanded', 'true');
+      button.removeAttribute('aria-label');
     });
     await expandCollapsed(document.getElementById('root')!);
     expect(clicks).toBe(1);

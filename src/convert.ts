@@ -1281,7 +1281,39 @@ export function buildCode(el: Element, ctx?: Ctx): Block {
   return { type: 'code', lang, value };
 }
 
-/** Text of a code block with its editor chrome removed. */
+/**
+ * Is this element laid out as a block, and therefore a line boundary?
+ *
+ * Asks the computed style rather than matching class names, because Loop's
+ * code-line elements carry hashed CSS-module names that change every build.
+ * jsdom reports no `display` for elements it has no UA rule for, hence the
+ * tag-name fallback.
+ */
+function isBlockLevel(el: Element): boolean {
+  let display = '';
+  try {
+    display = getComputedStyle(el).display;
+  } catch {
+    display = '';
+  }
+  if (display) {
+    return !(display === 'inline' || display === 'contents' || display.startsWith('inline-'));
+  }
+  return !INLINE_TAGS.has(el.tagName.toUpperCase());
+}
+
+/**
+ * Text of a code block, with its editor chrome removed and its line structure
+ * restored.
+ *
+ * Loop renders every line of a snippet as its own element and puts no newline
+ * characters anywhere in the DOM -- the line breaks exist purely as layout.
+ * Concatenating text nodes therefore yields the whole program on one line,
+ * indentation and all collapsed away. A newline is emitted at each block-level
+ * boundary to put them back.
+ *
+ * VERIFIED 2026-09-16 against a live Loop page.
+ */
 function codeTextOf(el: Element): string {
   let chrome: Element[] = [];
   try {
@@ -1289,18 +1321,54 @@ function codeTextOf(el: Element): string {
   } catch {
     chrome = [];
   }
-  if (chrome.length === 0) return composedText(el);
 
   const skip = new Set(chrome);
   const parts: string[] = [];
+
+  /** Never stack blank lines from nested block wrappers around one line. */
+  const breakLine = (): void => {
+    if (parts.length === 0) return;
+    if (/\n[ \t]*$/.test(parts[parts.length - 1] ?? '')) return;
+    parts.push('\n');
+  };
+
   const visit = (node: Node): void => {
-    if (isElement(node) && skip.has(node)) return;
     if (isText(node)) {
-      parts.push(node.nodeValue ?? '');
+      const value = node.nodeValue ?? '';
+      // Whitespace containing a newline is HTML source formatting between
+      // block elements, not code. A blank line in the snippet arrives as an
+      // empty line element, never as a text node, so this cannot eat one.
+      if (value.trim() === '' && /\n/.test(value)) return;
+      // Loop indents with non-breaking spaces, which must survive as spaces
+      // rather than as U+00A0 inside a fenced block.
+      parts.push(value.replace(/\u00a0/g, ' '));
       return;
     }
+    if (!isElement(node)) return;
+    if (skip.has(node)) return;
+    if (node.tagName.toUpperCase() === 'BR') {
+      parts.push('\n');
+      return;
+    }
+
+    const block = isBlockLevel(node);
+    if (!block) {
+      for (const child of composedChildren(node)) visit(child);
+      return;
+    }
+
+    breakLine();
+    const before = parts.length;
     for (const child of composedChildren(node)) visit(child);
+    if (parts.length === before) {
+      // A block that emitted nothing is an empty line in the source. It needs
+      // a newline of its own, because `breakLine` would collapse it into the
+      // break that already ended the previous line.
+      parts.push('\n');
+    }
+    breakLine();
   };
+
   visit(el);
   return parts.join('');
 }

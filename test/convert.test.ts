@@ -475,10 +475,33 @@ describe('Loop code blocks (real markup)', () => {
 
   it('keeps the block chrome out of the fence', () => {
     const out = md();
-    expect(out).toContain('steps:');
-    expect(out).toContain('- script: echo hello');
+    expect(out).toContain('FROM node:24');
     expect(out).not.toContain('Go to line');
-    expect(out).not.toContain('YAML\n');
+    expect(out).not.toContain('Show more lines');
+  });
+
+  /**
+   * Loop renders each code line as its own element and puts no newline
+   * characters in the DOM at all -- the breaks are layout only. Joining text
+   * nodes therefore emitted the whole snippet on a single line.
+   */
+  it('restores one line per rendered line', () => {
+    const fence = /```yaml\n([\s\S]*?)\n```/.exec(md());
+    expect(fence).not.toBeNull();
+    expect(fence![1]!.split('\n')).toEqual([
+      'FROM node:24',
+      'RUN   apt-get update \\',
+      '  && apt-get install -y curl',
+      // An empty line element is a blank line in the snippet, not noise.
+      '',
+      'CMD ["node", "server.js"]',
+    ]);
+  });
+
+  it('keeps indentation, including non-breaking spaces', () => {
+    // Loop indents with U+00A0, which must reach the fence as ordinary spaces.
+    expect(md()).toMatch(/^ {2}&& apt-get install -y curl$/m);
+    expect(md()).not.toContain('\u00a0');
   });
 
   it('says so when a block is virtualized rather than emitting its chrome', () => {

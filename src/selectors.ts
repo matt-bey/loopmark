@@ -203,28 +203,27 @@ export const EXCLUDE_SELECTORS: readonly string[] = [
  * does, so the rule is narrow: an element must match one of these AND carry
  * `aria-expanded="false"` AND survive `DANGEROUS_CLICK_PATTERNS`.
  */
+/**
+ * Controls loopmark is permitted to click before reading the page.
+ *
+ * DELIBERATELY ALMOST EMPTY. Collapsed heading sections are NOT expanded, even
+ * though their content is otherwise unreachable: Loop syncs a section's
+ * collapsed state through Fluid, so opening one may be a write to the shared
+ * document and change what collaborators see. loopmark is read-only, and that
+ * rule outranks completeness. Collapsed sections are named in the output and
+ * in the warnings instead, so the reader can expand them and export again.
+ *
+ * What remains is rendering-local: "Show more lines" pages through a code
+ * block that is already on screen and already part of the export. It changes
+ * how much of a block is rendered, not the document.
+ *
+ * Before adding anything here, ask whether clicking it could change what
+ * another person sees in Loop. If it could, it does not belong.
+ */
 export const EXPANDABLE_ALLOWLIST: readonly string[] = [
-  // VERIFIED 2026-09-16 via loopd -- Scriptor's collapsed-heading toggle.
-  '[class*="scriptor-collapseButtonContainer" i][aria-expanded="false"]',
-
-  // Native disclosure.
-  'summary[aria-expanded="false"]',
-
-  // Generic ARIA disclosure buttons.
-  'button[aria-expanded="false"][class*="collaps" i]',
-  'button[aria-expanded="false"][class*="expand" i]',
-  'button[aria-expanded="false"][class*="chevron" i]',
-  'button[aria-expanded="false"][class*="disclosure" i]',
-  '[role="button"][aria-expanded="false"][class*="collaps" i]',
-  '[role="button"][aria-expanded="false"][class*="expand" i]',
-
-  // Collapsed outline headings expose aria-expanded on the heading itself.
-  '[role="heading"][aria-expanded="false"]',
-
   /**
    * Loop virtualizes code blocks: a long snippet renders only its first few
-   * lines and hides the rest behind "Show more lines". Without this, a code
-   * block exports as its chrome and nothing else.
+   * lines and hides the rest behind "Show more lines".
    * VERIFIED 2026-09-16 against a saved Loop page.
    */
   'button[aria-label*="show more" i]',

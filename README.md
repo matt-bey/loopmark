@@ -104,6 +104,14 @@ Read this section before relying on the output.
   the page against those it converted and warns about the difference, so a
   partial export is never presented as a complete one. **If you see that
   warning, scroll the whole page yourself and run it again.**
+- **Collapsed sections are not exported, by design.** While a heading section
+  is collapsed, Loop does not render its content at all -- a code block inside
+  one contains its toolbar and no code. loopmark will not expand it for you:
+  Loop syncs collapsed state through Fluid, so opening a section may be a write
+  to the shared document and change what your collaborators see, and loopmark
+  is strictly read-only. Instead it marks the spot in the output and names the
+  sections in the warnings, so you can expand the ones you care about and
+  export again.
 - **Live components become static snapshots.** A voting table exports as the
   text it displayed at that moment, in a fenced block. Nothing stays live.
 - **Images are links, not files.** They point at their original Loop URLs, which

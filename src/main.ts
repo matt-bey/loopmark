@@ -23,7 +23,7 @@ import { copyText, removeExistingOverlay, showMessage, showOverlay } from './ui.
 async function run(): Promise<void> {
   showMessage({
     heading: 'loopmark',
-    message: 'Reading the page… expanding collapsed sections and scrolling to load everything.',
+    message: 'Reading the page… scrolling to make Loop render everything.',
     busy: true,
   });
 

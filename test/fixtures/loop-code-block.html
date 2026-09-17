@@ -19,9 +19,17 @@
               </button>
               <button type="button" role="combobox" aria-label="Language mode">YAML</button>
             </div>
+            <!--
+              One element per line, no newline characters anywhere, and
+              indentation carried as non-breaking spaces. The line breaks
+              exist only as layout.
+            -->
             <div class="code-body-hash">
-              <div class="line-hash"><span>steps:</span></div>
-              <div class="line-hash"><span>  - script: echo hello</span></div>
+              <div class="line-hash"><span>FROM </span><span>node:24</span></div>
+              <div class="line-hash"><span>RUN   apt-get update \</span></div>
+              <div class="line-hash"><span>  &amp;&amp; apt-get install -y curl</span></div>
+              <div class="line-hash"><span></span></div>
+              <div class="line-hash"><span>CMD [&quot;node&quot;, &quot;server.js&quot;]</span></div>
             </div>
           </div>
         </div>

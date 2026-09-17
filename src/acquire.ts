@@ -279,11 +279,12 @@ export function isSafeToClick(el: Element): boolean {
  *
  * Safety model: an element is clicked only if it matches the narrow allowlist
  * in `selectors.ts` AND survives the `DANGEROUS_CLICK_PATTERNS` veto AND has
- * not been clicked already. Expanding can reveal further collapsed sections,
- * so we run a few passes -- but never more than `MAX_EXPAND_CLICKS` total.
+ * not been clicked already, with a hard ceiling of `MAX_EXPAND_CLICKS`.
  *
- * Idempotent: `aria-expanded` flips to `"true"` on success, so a second run
- * finds nothing to do.
+ * The allowlist deliberately excludes collapsed heading sections: Loop syncs
+ * that state through Fluid, so opening one may be a write to the shared
+ * document. loopmark reports those sections rather than opening them. What is
+ * left is rendering-local paging within a block already on screen.
  */
 export async function expandCollapsed(root: Node): Promise<number> {
   const clicked = new Set<Element>();

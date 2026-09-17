@@ -115,23 +115,9 @@
     "loopmark-overlay"
   ];
   var EXPANDABLE_ALLOWLIST = [
-    // VERIFIED 2026-09-16 via loopd -- Scriptor's collapsed-heading toggle.
-    '[class*="scriptor-collapseButtonContainer" i][aria-expanded="false"]',
-    // Native disclosure.
-    'summary[aria-expanded="false"]',
-    // Generic ARIA disclosure buttons.
-    'button[aria-expanded="false"][class*="collaps" i]',
-    'button[aria-expanded="false"][class*="expand" i]',
-    'button[aria-expanded="false"][class*="chevron" i]',
-    'button[aria-expanded="false"][class*="disclosure" i]',
-    '[role="button"][aria-expanded="false"][class*="collaps" i]',
-    '[role="button"][aria-expanded="false"][class*="expand" i]',
-    // Collapsed outline headings expose aria-expanded on the heading itself.
-    '[role="heading"][aria-expanded="false"]',
     /**
      * Loop virtualizes code blocks: a long snippet renders only its first few
-     * lines and hides the rest behind "Show more lines". Without this, a code
-     * block exports as its chrome and nothing else.
+     * lines and hides the rest behind "Show more lines".
      * VERIFIED 2026-09-16 against a saved Loop page.
      */
     'button[aria-label*="show more" i]'
@@ -1324,6 +1310,18 @@
     }
     return { type: "code", lang, value };
   }
+  function isBlockLevel(el2) {
+    let display = "";
+    try {
+      display = getComputedStyle(el2).display;
+    } catch {
+      display = "";
+    }
+    if (display) {
+      return !(display === "inline" || display === "contents" || display.startsWith("inline-"));
+    }
+    return !INLINE_TAGS.has(el2.tagName.toUpperCase());
+  }
   function codeTextOf(el2) {
     let chrome = [];
     try {
@@ -1331,16 +1329,38 @@
     } catch {
       chrome = [];
     }
-    if (chrome.length === 0) return composedText(el2);
     const skip = new Set(chrome);
     const parts = [];
+    const breakLine = () => {
+      if (parts.length === 0) return;
+      if (/\n[ \t]*$/.test(parts[parts.length - 1] ?? "")) return;
+      parts.push("\n");
+    };
     const visit = (node) => {
-      if (isElement2(node) && skip.has(node)) return;
       if (isText(node)) {
-        parts.push(node.nodeValue ?? "");
+        const value = node.nodeValue ?? "";
+        if (value.trim() === "" && /\n/.test(value)) return;
+        parts.push(value.replace(/\u00a0/g, " "));
         return;
       }
+      if (!isElement2(node)) return;
+      if (skip.has(node)) return;
+      if (node.tagName.toUpperCase() === "BR") {
+        parts.push("\n");
+        return;
+      }
+      const block = isBlockLevel(node);
+      if (!block) {
+        for (const child of composedChildren(node)) visit(child);
+        return;
+      }
+      breakLine();
+      const before = parts.length;
       for (const child of composedChildren(node)) visit(child);
+      if (parts.length === before) {
+        parts.push("\n");
+      }
+      breakLine();
     };
     visit(el2);
     return parts.join("");
@@ -1841,7 +1861,7 @@ details pre { margin: 8px 0 0; padding: 10px; background: #f3f5f8; border-radius
   async function run() {
     showMessage({
       heading: "loopmark",
-      message: "Reading the page\u2026 expanding collapsed sections and scrolling to load everything.",
+      message: "Reading the page\u2026 scrolling to make Loop render everything.",
       busy: true
     });
     const diagnostics = {
