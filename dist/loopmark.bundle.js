@@ -134,7 +134,6 @@
      * block exports as its chrome and nothing else.
      * VERIFIED 2026-09-16 against a saved Loop page.
      */
-    'button[aria-label="Show more lines" i]',
     'button[aria-label*="show more" i]'
   ];
   var DANGEROUS_CLICK_PATTERNS = [
@@ -147,6 +146,8 @@
     /comment|reply|resolve/i
   ];
   var MAX_EXPAND_CLICKS = 200;
+  var MIN_SCROLLABLE_OVERFLOW = 24;
+  var PREPARE_PASSES = 3;
   var FORCE_RENDER = {
     /** Scroll positions to visit between top and bottom. */
     steps: 8,
@@ -370,13 +371,13 @@
     const deadline = Date.now() + FORCE_RENDER.budgetMs;
     for (let pass = 0; pass < 4; pass += 1) {
       if (Date.now() > deadline || clicked.size >= MAX_EXPAND_CLICKS) break;
-      const targets = [];
+      const targets = /* @__PURE__ */ new Set();
       for (const selector of EXPANDABLE_ALLOWLIST) {
         for (const el2 of pierceQuerySelectorAll(root, selector)) {
-          if (!clicked.has(el2) && isSafeToClick(el2)) targets.push(el2);
+          if (!clicked.has(el2) && isSafeToClick(el2)) targets.add(el2);
         }
       }
-      if (targets.length === 0) break;
+      if (targets.size === 0) break;
       for (const el2 of targets) {
         if (clicked.size >= MAX_EXPAND_CLICKS) break;
         clicked.add(el2);
@@ -389,24 +390,34 @@
     }
     return clicked.size;
   }
+  function scrollsVertically(el2) {
+    if (el2.scrollHeight - el2.clientHeight <= MIN_SCROLLABLE_OVERFLOW) return false;
+    try {
+      return /auto|scroll|overlay/.test(getComputedStyle(el2).overflowY);
+    } catch {
+      return false;
+    }
+  }
   function findScroller(root, doc = document) {
-    let best = doc.scrollingElement;
-    let bestOverflow = best ? best.scrollHeight - best.clientHeight : 0;
+    if (isElement(root)) {
+      for (let el2 = composedParent(root); el2; el2 = composedParent(el2)) {
+        if (scrollsVertically(el2)) return el2;
+      }
+    }
+    const scrolling = doc.scrollingElement;
+    if (scrolling && scrolling.scrollHeight - scrolling.clientHeight > MIN_SCROLLABLE_OVERFLOW) {
+      return scrolling;
+    }
+    let best = null;
+    let bestOverflow = MIN_SCROLLABLE_OVERFLOW;
     walkComposed(root, (node) => {
       if (!isElement(node)) return;
       const overflow = node.scrollHeight - node.clientHeight;
-      if (overflow <= bestOverflow) return;
-      let overflowY = "";
-      try {
-        overflowY = getComputedStyle(node).overflowY;
-      } catch {
-        return;
-      }
-      if (!/auto|scroll/.test(overflowY)) return;
+      if (overflow <= bestOverflow || !scrollsVertically(node)) return;
       best = node;
       bestOverflow = overflow;
     });
-    return bestOverflow > 0 ? best : null;
+    return best;
   }
   async function forceRender(root, doc = document) {
     const scroller = findScroller(root, doc);
@@ -1826,7 +1837,13 @@ details pre { margin: 8px 0 0; padding: 10px; background: #f3f5f8; border-radius
       );
     }
     diagnostics.expandedWidgets = await expandCollapsed(root);
-    const scrolled = await forceRender(root, document);
+    let scrolled = await forceRender(root, document);
+    for (let pass = 1; pass < PREPARE_PASSES; pass += 1) {
+      const opened = await expandCollapsed(root);
+      if (opened === 0) break;
+      diagnostics.expandedWidgets += opened;
+      scrolled = await forceRender(root, document) || scrolled;
+    }
     if (!scrolled) {
       diagnostics.warnings.push(
         "No scrollable container was found, so virtualized content could not be forced to render. If the page is long, the export may be truncated."

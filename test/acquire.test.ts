@@ -6,7 +6,9 @@ import {
   countShadowRoots,
   expandCollapsed,
   findContentRoot,
+  findScroller,
   findTitle,
+  forceRender,
   isSafeToClick,
   pierceQuerySelectorAll,
   walkComposed,
@@ -220,5 +222,161 @@ describe('click safety', () => {
 
     expect(await expandCollapsed(document.body)).toBe(1);
     expect(await expandCollapsed(document.body)).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Finding the scroller.
+//
+// This is the bug that made `forceRender` a no-op on live Loop: the scroller
+// is an <article> three levels ABOVE the content root, and `.scriptor-canvas`
+// in between is `overflow: hidden` despite its `scriptor-styled-scrollbar`
+// class. Searching only inside the content root found nothing, so nothing was
+// ever scrolled and every virtualized block went missing without explanation.
+//
+// jsdom performs no layout, so scroll metrics are stubbed per element.
+// ---------------------------------------------------------------------------
+
+/** Give an element the scroll metrics jsdom will not compute. */
+const withScrollMetrics = (el: Element, scrollHeight: number, clientHeight: number): void => {
+  Object.defineProperty(el, 'scrollHeight', { value: scrollHeight, configurable: true });
+  Object.defineProperty(el, 'clientHeight', { value: clientHeight, configurable: true });
+};
+
+describe('findScroller', () => {
+  /** The real Loop shape: scrolling <article> > hidden canvas > content root. */
+  const loopShape = (): { root: Element; article: Element; canvas: Element } => {
+    document.body.innerHTML = `
+      <article style="overflow-y: auto">
+        <div class="scriptor-canvas scriptor-styled-scrollbar" style="overflow: hidden">
+          <div class="scriptor-pageContainer">
+            <div class="scriptor-paragraph">content</div>
+          </div>
+        </div>
+      </article>`;
+    const article = document.querySelector('article')!;
+    const canvas = document.querySelector('.scriptor-canvas')!;
+    const root = document.querySelector('.scriptor-pageContainer')!;
+    withScrollMetrics(article, 8000, 900);
+    // The canvas is tall but clips rather than scrolls -- the decoy.
+    withScrollMetrics(canvas, 8000, 900);
+    withScrollMetrics(root, 8000, 8000);
+    return { root, article, canvas };
+  };
+
+  it('finds a scroller that is an ancestor of the content root', () => {
+    const { root, article } = loopShape();
+    expect(findScroller(root, document)).toBe(article);
+  });
+
+  it('does not mistake an overflow:hidden wrapper for the scroller', () => {
+    const { root, canvas } = loopShape();
+    expect(findScroller(root, document)).not.toBe(canvas);
+  });
+
+  it('ignores a few pixels of rounding overflow', () => {
+    document.body.innerHTML = `
+      <div id="outer" style="overflow-y: auto"><div id="root">content</div></div>`;
+    const outer = document.getElementById('outer')!;
+    withScrollMetrics(outer, 908, 900);
+    expect(findScroller(document.getElementById('root')!, document)).toBeNull();
+  });
+
+  it('falls back to a scrolling descendant when no ancestor scrolls', () => {
+    document.body.innerHTML = `
+      <div id="root"><div id="pane" style="overflow-y: scroll">content</div></div>`;
+    const pane = document.getElementById('pane')!;
+    withScrollMetrics(pane, 5000, 600);
+    expect(findScroller(document.getElementById('root')!, document)).toBe(pane);
+  });
+
+  it('returns null when nothing scrolls, rather than guessing', () => {
+    document.body.innerHTML = '<div id="root"><p>short</p></div>';
+    expect(findScroller(document.getElementById('root')!, document)).toBeNull();
+  });
+});
+
+describe('forceRender', () => {
+  it('scrolls an ancestor scroller and restores its position', async () => {
+    document.body.innerHTML = `
+      <article style="overflow-y: auto">
+        <div class="scriptor-pageContainer">content</div>
+      </article>`;
+    const article = document.querySelector('article')!;
+    const root = document.querySelector('.scriptor-pageContainer')!;
+    withScrollMetrics(article, 8000, 900);
+
+    const seen: number[] = [];
+    let position = 120;
+    Object.defineProperty(article, 'scrollTop', {
+      configurable: true,
+      get: () => position,
+      set: (value: number) => {
+        position = value;
+        seen.push(value);
+      },
+    });
+
+    expect(await forceRender(root, document)).toBe(true);
+    expect(seen.length).toBeGreaterThan(1);
+    expect(Math.max(...seen)).toBe(8000);
+    // The user's scroll position is not a side effect anyone asked for.
+    expect(position).toBe(120);
+  });
+
+  it('reports false when there is nothing to scroll', async () => {
+    document.body.innerHTML = '<div id="root">short</div>';
+    expect(await forceRender(document.getElementById('root')!, document)).toBe(false);
+  });
+});
+
+describe('expanding Loop code blocks', () => {
+  it('considers "Show more lines" safe to click', () => {
+    document.body.innerHTML =
+      '<button type="button" aria-label="Show more lines"><span>Show more lines</span></button>';
+    expect(isSafeToClick(document.querySelector('button')!)).toBe(true);
+  });
+
+  it('clicks it, so a virtualized code block can be read', async () => {
+    document.body.innerHTML = `
+      <div class="scriptor-pageContainer">
+        <div class="scriptor-component-code-block">
+          <button type="button" aria-label="Show more lines">Show more lines</button>
+        </div>
+      </div>`;
+    const root = document.querySelector('.scriptor-pageContainer')!;
+    const button = document.querySelector('button')!;
+    let clicks = 0;
+    button.addEventListener('click', () => {
+      clicks += 1;
+    });
+    expect(await expandCollapsed(root)).toBeGreaterThan(0);
+    expect(clicks).toBe(1);
+  });
+
+  it('still refuses anything destructive or outward-facing', () => {
+    for (const label of ['Delete row', 'Share', 'Add a comment', 'Sign out', 'New page']) {
+      document.body.innerHTML = `<button aria-expanded="false" class="expand" aria-label="${label}"></button>`;
+      expect(isSafeToClick(document.querySelector('button')!)).toBe(false);
+    }
+  });
+});
+
+describe('expansion is idempotent within a pass', () => {
+  it('clicks an element once even when several allowlist rules match it', async () => {
+    // `[class*="collaps"]` and `[class*="expand"]` both match this button.
+    // Clicking a toggle twice closes what the first click opened.
+    document.body.innerHTML = `
+      <div id="root">
+        <button aria-expanded="false" class="collapsible expander" aria-label="Show section"></button>
+      </div>`;
+    const button = document.querySelector('button')!;
+    let clicks = 0;
+    button.addEventListener('click', () => {
+      clicks += 1;
+      button.setAttribute('aria-expanded', 'true');
+    });
+    await expandCollapsed(document.getElementById('root')!);
+    expect(clicks).toBe(1);
   });
 });

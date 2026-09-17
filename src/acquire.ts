@@ -16,6 +16,7 @@ import {
   MAX_EXPAND_CLICKS,
   MIN_CONTENT_ROOT_CHARS,
   TITLE_CANDIDATES,
+  MIN_SCROLLABLE_OVERFLOW,
 } from './selectors.js';
 
 export const sleep = (ms: number): Promise<void> =>
@@ -291,13 +292,15 @@ export async function expandCollapsed(root: Node): Promise<number> {
   for (let pass = 0; pass < 4; pass += 1) {
     if (Date.now() > deadline || clicked.size >= MAX_EXPAND_CLICKS) break;
 
-    const targets: Element[] = [];
+    // A Set, not an array: the allowlist selectors overlap, and clicking a
+    // toggle twice in one pass closes what the first click opened.
+    const targets = new Set<Element>();
     for (const selector of EXPANDABLE_ALLOWLIST) {
       for (const el of pierceQuerySelectorAll(root, selector)) {
-        if (!clicked.has(el) && isSafeToClick(el)) targets.push(el);
+        if (!clicked.has(el) && isSafeToClick(el)) targets.add(el);
       }
     }
-    if (targets.length === 0) break;
+    if (targets.size === 0) break;
 
     for (const el of targets) {
       if (clicked.size >= MAX_EXPAND_CLICKS) break;
@@ -325,26 +328,58 @@ export async function expandCollapsed(root: Node): Promise<number> {
  * `window.scrollTo` does nothing useful. We pick the descendant with the
  * largest vertical overflow that is also styled to scroll.
  */
-export function findScroller(root: Node, doc: Document = document): Element | null {
-  let best: Element | null = doc.scrollingElement;
-  let bestOverflow = best ? best.scrollHeight - best.clientHeight : 0;
+/** Does this element actually scroll vertically, right now? */
+function scrollsVertically(el: Element): boolean {
+  if (el.scrollHeight - el.clientHeight <= MIN_SCROLLABLE_OVERFLOW) return false;
+  try {
+    return /auto|scroll|overlay/.test(getComputedStyle(el).overflowY);
+  } catch {
+    return false;
+  }
+}
 
+/**
+ * Find the element that scrolls the document content.
+ *
+ * Searched outward first, and that ordering is the whole point. On Loop the
+ * scroller is an `<article>` three levels *above* the page container, while
+ * `.scriptor-canvas` in between is `overflow: hidden` despite carrying a
+ * `scriptor-styled-scrollbar` class. An inside-out search finds nothing at
+ * all, `forceRender` silently does nothing, and every virtualized block --
+ * on the sample page, three of four code blocks -- is quietly missing from
+ * the export.
+ *
+ * Class names cannot be trusted here; only computed `overflow-y` can.
+ *
+ * VERIFIED 2026-09-16 against a saved Loop page.
+ */
+export function findScroller(root: Node, doc: Document = document): Element | null {
+  // 1. Ancestors, nearest first: the standard "scroll parent" lookup.
+  if (isElement(root)) {
+    for (let el = composedParent(root); el; el = composedParent(el)) {
+      if (scrollsVertically(el)) return el;
+    }
+  }
+
+  // 2. The document itself, for layouts that scroll the page normally.
+  const scrolling = doc.scrollingElement;
+  if (scrolling && scrolling.scrollHeight - scrolling.clientHeight > MIN_SCROLLABLE_OVERFLOW) {
+    return scrolling;
+  }
+
+  // 3. Descendants, for layouts that scroll an inner pane. Deepest overflow
+  //    wins, since an inner scroller is only useful if it holds the content.
+  let best: Element | null = null;
+  let bestOverflow = MIN_SCROLLABLE_OVERFLOW;
   walkComposed(root, (node) => {
     if (!isElement(node)) return;
     const overflow = node.scrollHeight - node.clientHeight;
-    if (overflow <= bestOverflow) return;
-    let overflowY = '';
-    try {
-      overflowY = getComputedStyle(node).overflowY;
-    } catch {
-      return;
-    }
-    if (!/auto|scroll/.test(overflowY)) return;
+    if (overflow <= bestOverflow || !scrollsVertically(node)) return;
     best = node;
     bestOverflow = overflow;
   });
 
-  return bestOverflow > 0 ? best : null;
+  return best;
 }
 
 /**

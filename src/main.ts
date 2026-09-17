@@ -16,7 +16,7 @@ import {
   type WalkStats,
 } from './acquire.js';
 import { convert } from './convert.js';
-import { isLoopHost, LOOP_HOSTS } from './selectors.js';
+import { isLoopHost, LOOP_HOSTS, PREPARE_PASSES } from './selectors.js';
 import type { Diagnostics } from './types.js';
 import { copyText, removeExistingOverlay, showMessage, showOverlay } from './ui.js';
 
@@ -50,8 +50,23 @@ async function run(): Promise<void> {
   }
 
   // 2. Make sure everything is actually in the DOM.
+  //
+  //    Expansion and scrolling feed each other: scrolling renders blocks that
+  //    were virtualized, and those blocks bring their own collapsed widgets
+  //    ("Show more lines" inside a code block, collapsed headings). A single
+  //    expand-then-scroll pass therefore misses anything below the fold, which
+  //    is how three of four code blocks went missing. Repeat until a pass
+  //    finds nothing left to open.
   diagnostics.expandedWidgets = await expandCollapsed(root);
-  const scrolled = await forceRender(root, document);
+  let scrolled = await forceRender(root, document);
+
+  for (let pass = 1; pass < PREPARE_PASSES; pass += 1) {
+    const opened = await expandCollapsed(root);
+    if (opened === 0) break;
+    diagnostics.expandedWidgets += opened;
+    scrolled = (await forceRender(root, document)) || scrolled;
+  }
+
   if (!scrolled) {
     diagnostics.warnings.push(
       'No scrollable container was found, so virtualized content could not be forced ' +

@@ -227,7 +227,6 @@ export const EXPANDABLE_ALLOWLIST: readonly string[] = [
    * block exports as its chrome and nothing else.
    * VERIFIED 2026-09-16 against a saved Loop page.
    */
-  'button[aria-label="Show more lines" i]',
   'button[aria-label*="show more" i]',
 ];
 
@@ -252,6 +251,19 @@ export const MAX_EXPAND_CLICKS = 200;
 // ---------------------------------------------------------------------------
 // Virtualization
 // ---------------------------------------------------------------------------
+
+/**
+ * A container must overflow by more than this to count as the scroller. A few
+ * pixels of overflow is rounding, not a scroll region.
+ */
+export const MIN_SCROLLABLE_OVERFLOW = 24;
+
+/**
+ * How many expand-then-scroll rounds to run before converting. Scrolling
+ * renders virtualized blocks, which bring their own collapsed widgets, so one
+ * pass is not enough. Bounded so a pathological page cannot loop forever.
+ */
+export const PREPARE_PASSES = 3;
 
 export const FORCE_RENDER = {
   /** Scroll positions to visit between top and bottom. */
