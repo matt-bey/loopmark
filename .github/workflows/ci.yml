@@ -76,15 +76,19 @@ jobs:
   # not enabled Pages yet -- a red X on a perfectly good commit, for a feature
   # nobody had switched on.
   #
-  # To publish: enable Pages (Settings -> Pages -> Source: "GitHub Actions"),
-  # then add a repository variable PUBLISH_PAGES = true
-  # (Settings -> Secrets and variables -> Actions -> Variables).
+  # To publish, once:
+  #   1. Settings -> Pages -> Source: "GitHub Actions"
+  #   2. Settings -> Secrets and variables -> Actions -> Variables tab ->
+  #      New repository variable: PUBLISH_PAGES = true
+  # then push to main, or run this workflow manually from the Actions tab.
+  #
+  # The ref check alone is enough to keep pull requests out: a PR run reports
+  # `github.ref` as `refs/pull/N/merge`, never `refs/heads/main`. Testing the
+  # event name as well would add nothing except to block `workflow_dispatch`,
+  # which is the one way to publish without inventing a commit to push.
   publish:
     needs: verify
-    if: >-
-      vars.PUBLISH_PAGES == 'true'
-      && github.ref == 'refs/heads/main'
-      && github.event_name == 'push'
+    if: vars.PUBLISH_PAGES == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       pages: write
