@@ -63,7 +63,8 @@ paste into a hand-made bookmark.
 
 | Element | Notes |
 | --- | --- |
-| Headings | Keyed off `role="heading"` + `aria-level`, **not** tag nesting. This is what fixes the `- ` prefix artifact. |
+| Headings | Keyed off `role="heading"` + `aria-level`, **not** tag nesting -- a real Loop page has 26 ARIA headings and essentially no `<h1>`-`<h6>`. This is what fixes the `- ` prefix artifact. |
+| Heading levels | The page title owns the document's only `#`, and body headings shift down one level, so Loop's "Heading 1" becomes `##`. Loop pages routinely have several `aria-level="1"` headings, which would otherwise produce several competing H1s. Clamped at `######`. |
 | Paragraphs | Soft lines within a paragraph join with a Markdown hard break. |
 | Lists | Ordered, unordered, nested. Loop never nests lists in the DOM -- depth is `aria-level`, and numbering is a CSS custom property, since Loop emits no `<ol>` at all. |
 | Checklists | `- [ ]` / `- [x]` from checkbox state. |

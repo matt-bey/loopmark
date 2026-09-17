@@ -1642,6 +1642,38 @@ function safeCount(root: Element, selector: string): number {
   }
 }
 
+/** Deepest heading Markdown has; `####### x` is a paragraph, not a heading. */
+const MAX_HEADING_LEVEL = 6;
+
+/**
+ * Push every heading down by `by` levels, so the title can own H1.
+ *
+ * Loop tops out at `aria-level="4"` in practice, so the clamp is rarely
+ * reached. When it is, two adjacent Loop levels collapse into one Markdown
+ * level -- a flatter outline, which beats emitting `#######`, which renders as
+ * literal text.
+ */
+function shiftHeadings(blocks: Block[], by: number): Block[] {
+  return blocks.map((block) => {
+    switch (block.type) {
+      case 'heading': {
+        const level = Math.min(block.level + by, MAX_HEADING_LEVEL) as HeadingLevel;
+        return { ...block, level };
+      }
+      case 'quote':
+      case 'component':
+        return { ...block, blocks: shiftHeadings(block.blocks, by) };
+      case 'list':
+        return {
+          ...block,
+          items: block.items.map((item) => ({ ...item, blocks: shiftHeadings(item.blocks, by) })),
+        };
+      default:
+        return block;
+    }
+  });
+}
+
 export interface ConvertInput {
   root: Element;
   meta: DocMeta;
@@ -1653,7 +1685,13 @@ export function convert({ root, meta, diagnostics }: ConvertInput): ConversionRe
   const blocks = collectBlocks(root, ctx);
   const doc: LoopDoc = { meta, blocks };
 
-  let markdown = `# ${meta.title.replace(/\n/g, ' ').trim() || 'Untitled'}\n\n${renderBlocks(blocks)}`;
+  // The page title becomes the document's only H1, so the body nests beneath
+  // it. Done here rather than in `headingLevel` on purpose: the IR keeps the
+  // level Loop actually used, and the shift is a property of assembling a
+  // document that has a title, not of reading a heading.
+  let markdown =
+    `# ${meta.title.replace(/\n/g, ' ').trim() || 'Untitled'}\n\n` +
+    renderBlocks(shiftHeadings(blocks, 1));
 
   warnOnMissingComponents(root, blocks, diagnostics);
 

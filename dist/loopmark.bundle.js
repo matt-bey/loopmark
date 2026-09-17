@@ -1584,13 +1584,34 @@ ${fence}`,
       return 0;
     }
   }
+  var MAX_HEADING_LEVEL = 6;
+  function shiftHeadings(blocks, by) {
+    return blocks.map((block) => {
+      switch (block.type) {
+        case "heading": {
+          const level = Math.min(block.level + by, MAX_HEADING_LEVEL);
+          return { ...block, level };
+        }
+        case "quote":
+        case "component":
+          return { ...block, blocks: shiftHeadings(block.blocks, by) };
+        case "list":
+          return {
+            ...block,
+            items: block.items.map((item) => ({ ...item, blocks: shiftHeadings(item.blocks, by) }))
+          };
+        default:
+          return block;
+      }
+    });
+  }
   function convert({ root, meta, diagnostics }) {
     const ctx = { diag: diagnostics, imageUrls: [], depth: 0, tableDepth: 0 };
     const blocks = collectBlocks(root, ctx);
     const doc = { meta, blocks };
     let markdown = `# ${meta.title.replace(/\n/g, " ").trim() || "Untitled"}
 
-${renderBlocks(blocks)}`;
+` + renderBlocks(shiftHeadings(blocks, 1));
     warnOnMissingComponents(root, blocks, diagnostics);
     const uniqueImages = Array.from(new Set(ctx.imageUrls));
     if (uniqueImages.length > 0) {

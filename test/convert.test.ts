@@ -12,11 +12,16 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('headings', () => {
+  // NOTE: `body()` strips the `# Title` line, and every body heading is pushed
+  // down one level so the title owns the document's only H1. So Loop's
+  // "Heading 1" is asserted here as `##`.
+
   it('promotes heading-marked list items out of the list', () => {
     const md = body(fixture('heading-in-list-item.html'));
 
-    expect(md).toContain('## Section One');
-    expect(md).toContain('### Subsection');
+    // Anchored, because `toContain('## Section One')` also matches `### ...`.
+    expect(md).toMatch(/^### Section One$/m);
+    expect(md).toMatch(/^#### Subsection$/m);
     expect(md).toContain('- First real bullet');
     expect(md).toContain('- Second real bullet');
 
@@ -29,19 +34,64 @@ describe('headings', () => {
     // An <h1> that ARIA says is level 3 is a level-3 heading: the accessibility
     // tree reflects what the author chose, the tag reflects editor internals.
     const md = body(html('<h1 role="heading" aria-level="3">Mislabelled</h1>'));
-    expect(md).toBe('### Mislabelled');
+    expect(md).toBe('#### Mislabelled');
   });
 
   it('falls back to tag name when aria-level is absent', () => {
-    expect(body(html('<h2>Plain</h2>'))).toBe('## Plain');
+    expect(body(html('<h2>Plain</h2>'))).toBe('### Plain');
   });
 
   it('defaults an unranked ARIA heading to level 3', () => {
-    expect(body(html('<div role="heading">Unranked</div>'))).toBe('### Unranked');
+    expect(body(html('<div role="heading">Unranked</div>'))).toBe('#### Unranked');
   });
 
   it('clamps out-of-range aria-level values', () => {
-    expect(body(html('<div role="heading" aria-level="9">Too deep</div>'))).toBe('### Too deep');
+    expect(body(html('<div role="heading" aria-level="9">Too deep</div>'))).toBe('#### Too deep');
+  });
+});
+
+/**
+ * Loop's page title is not a body heading -- it lives in its own region
+ * (`#headerContainer`), which is why it takes a separate selector to find.
+ * It therefore owns H1, and the body nests underneath, instead of a document
+ * carrying five competing H1s as the sample page did.
+ */
+describe('heading levels relative to the title', () => {
+  const convert = (source: string): string =>
+    convertElement(html(source), { title: 'My Page' }).markdown;
+
+  it('gives the title the only H1', () => {
+    const md = convert(
+      '<div role="heading" aria-level="1">Summary</div>' +
+        '<div role="heading" aria-level="1">Scope</div>',
+    );
+    expect(md.match(/^# /gm)).toHaveLength(1);
+    expect(md).toMatch(/^# My Page$/m);
+  });
+
+  it('pushes each Loop level down by one', () => {
+    const md = convert(
+      [1, 2, 3, 4].map((n) => `<div role="heading" aria-level="${n}">L${n}</div>`).join(''),
+    );
+    expect(md).toMatch(/^## L1$/m);
+    expect(md).toMatch(/^### L2$/m);
+    expect(md).toMatch(/^#### L3$/m);
+    expect(md).toMatch(/^##### L4$/m);
+  });
+
+  it('clamps at H6 rather than emitting an unrenderable seventh level', () => {
+    const md = convert('<div role="heading" aria-level="6">Deepest</div>');
+    expect(md).toMatch(/^###### Deepest$/m);
+    expect(md).not.toContain('#######');
+  });
+
+  it('shifts headings nested inside quotes and list items', () => {
+    const md = convert(
+      '<blockquote><div role="heading" aria-level="2">Quoted</div></blockquote>' +
+        '<ul><li><div role="heading" aria-level="2">Listed</div></li></ul>',
+    );
+    expect(md).toContain('> ### Quoted');
+    expect(md).toMatch(/^### Listed$/m);
   });
 });
 
