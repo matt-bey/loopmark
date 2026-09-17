@@ -246,6 +246,11 @@
   var CODE_LANGUAGE_SELECTOR = '[role="combobox"][aria-label*="language" i]';
   var CODE_CHROME_SELECTOR = [
     '[role="combobox"]',
+    // A LaTeX block renders a KaTeX preview of itself below the source, so the
+    // fence would contain the equation three times: once as LaTeX, once as
+    // MathML for screen readers, once as the visual rendering.
+    ".katex",
+    ".katex-display",
     '[role="toolbar"]',
     "button",
     '[role="button"]',
@@ -263,6 +268,8 @@
   };
   var COLLAPSED_SECTION_SELECTOR = '[class*="scriptor-collapseButtonContainer" i][aria-expanded="false"],[role="button"][aria-expanded="false"][class*="collaps" i]';
   var FLUENT_WRAPPER_SELECTOR = '.fui-FluentProvider, [data-testid="ComponentFluentProviderId"]';
+  var MATH_SELECTOR = ".katex-display, .katex, math";
+  var TEX_ANNOTATION_SELECTOR = 'annotation[encoding="application/x-tex"]';
 
   // src/acquire.ts
   var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -630,6 +637,7 @@
     if (role === "heading" || /^H[1-6]$/.test(tag) || HEADING_CLASS_PATTERN.test(cls) || (el2.getAttribute("data-automation-type") ?? "").toLowerCase().includes("heading")) {
       return "heading";
     }
+    if (isMath(el2)) return "inline";
     try {
       if (el2.matches(VOTING_SELECTOR)) return "inline";
     } catch {
@@ -668,6 +676,20 @@
     } catch {
       return false;
     }
+  }
+  function isMath(el2) {
+    try {
+      return el2.matches(MATH_SELECTOR);
+    } catch {
+      return false;
+    }
+  }
+  function mathNode(el2) {
+    if (!isMath(el2)) return null;
+    const annotation = el2.querySelector(TEX_ANNOTATION_SELECTOR);
+    const value = (annotation?.textContent ?? "").trim();
+    if (!value) return null;
+    return { type: "math", value, display: /\n/.test(value) };
   }
   function isFluentWrapper(el2) {
     try {
@@ -816,6 +838,8 @@
         }
         return [{ type: "image", alt, src }];
       }
+      const math = mathNode(node);
+      if (math) return [math];
       if (isMention(node)) {
         const name = mentionName(node);
         return name ? [{ type: "mention", name }] : [];
@@ -848,7 +872,7 @@
   function inlineIsEmpty(nodes) {
     return !nodes.some((n) => {
       if (n.type === "text") return n.value.trim() !== "";
-      if (n.type === "code" || n.type === "mention") return true;
+      if (n.type === "code" || n.type === "mention" || n.type === "math") return true;
       if (n.type === "image") return true;
       if (n.type === "link") return true;
       if (n.type === "break") return false;
@@ -1005,9 +1029,11 @@
             out.push(...buildParagraph(child, ctx));
             break;
           case "task": {
+            const checked = checkedState(child) ?? false;
+            const taskBlocks = collectBlocks(child, ctx);
             const item = {
-              checked: checkedState(child) ?? false,
-              blocks: collectBlocks(child, ctx)
+              checked,
+              blocks: checked ? stripStrikethrough(taskBlocks) : taskBlocks
             };
             const previous = out[out.length - 1];
             if (previous && previous.type === "list" && !previous.ordered) {
@@ -1174,6 +1200,33 @@
     const n = parseInt(raw, 10);
     return Number.isFinite(n) && n > 0 ? n : void 0;
   }
+  function stripStrikethrough(blocks) {
+    const inlines = (nodes) => nodes.flatMap((node) => {
+      if (node.type === "del") return inlines(node.children);
+      if (node.type === "strong" || node.type === "em") {
+        return [{ ...node, children: inlines(node.children) }];
+      }
+      if (node.type === "link") return [{ ...node, children: inlines(node.children) }];
+      return [node];
+    });
+    return blocks.map((block) => {
+      switch (block.type) {
+        case "paragraph":
+        case "heading":
+          return { ...block, children: inlines(block.children) };
+        case "quote":
+        case "component":
+          return { ...block, blocks: stripStrikethrough(block.blocks) };
+        case "list":
+          return {
+            ...block,
+            items: block.items.map((i) => ({ ...i, blocks: stripStrikethrough(i.blocks) }))
+          };
+        default:
+          return block;
+      }
+    });
+  }
   function buildList(listEl, ctx) {
     const ordered = listEl.tagName.toUpperCase() === "OL" || (listEl.getAttribute("role") ?? "").toLowerCase() === "list" && listEl.hasAttribute("start");
     const startAttr = parseInt(listEl.getAttribute("start") ?? "1", 10);
@@ -1209,7 +1262,11 @@
         continue;
       }
       const marker = loopListMarker(itemEl);
-      const item = { checked: checkedState(itemEl), blocks };
+      const checked = checkedState(itemEl);
+      const item = {
+        checked,
+        blocks: checked === true ? stripStrikethrough(blocks) : blocks
+      };
       const level = ariaNumber(itemEl, "aria-level");
       if (level !== void 0) item.level = level;
       if (marker !== null) item.ordered = markerIsOrdered(marker);
@@ -1508,6 +1565,11 @@
           break;
         case "mention":
           out += escapeText(node.name);
+          break;
+        case "math":
+          out += node.display ? `$$
+${node.value}
+$$` : `$${node.value}$`;
           break;
       }
     }

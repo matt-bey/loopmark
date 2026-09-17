@@ -1,0 +1,98 @@
+<!--
+  Mermaid, LaTeX, inline maths and a completed checklist item, from a saved
+  Loop demo page on 2026-09-16.
+
+  Load-bearing details:
+    - a code block's language is on a toolbar combobox, and Mermaid is just
+      another language, so the fence must be ```mermaid for an LLM to read it
+    - a LaTeX block renders a KaTeX preview of ITSELF below the source, so the
+      fence would otherwise contain the equation three times
+    - KaTeX emits the equation twice, `.katex-mathml` for assistive tech and
+      `.katex-html` for sight; the LaTeX source is in the MathML annotation
+    - Loop strikes through a COMPLETED checklist item's text, which is the same
+      fact `[x]` already states
+-->
+<div class="scriptor-pageContainer">
+  <div class="scriptor-pageBody">
+
+    <div class="scriptor-paragraph">
+      <span class="scriptor-inline">
+        <div class="scriptor-hosting-element scriptor-component-block">
+          <div data-theme="dark" class="scriptor-component-code-block scriptor-codeblock-virtualized">
+            <div class="toolbar-hash">
+              <button type="button" role="combobox" aria-label="Language mode">Mermaid</button>
+            </div>
+            <div class="code-body-hash">
+              <div class="line-hash"><span>flowchart TD</span></div>
+              <div class="line-hash"><span>  A[Need Diagrams?] --&gt;|use| B[Mermaid]</span></div>
+            </div>
+            <div class="more-hash">
+              <button type="button" aria-label="Show more lines">Show more lines</button>
+            </div>
+          </div>
+        </div>
+      </span>
+    </div>
+
+    <div class="scriptor-paragraph">
+      <span class="scriptor-inline">
+        <div class="scriptor-hosting-element scriptor-component-block">
+          <div data-theme="dark" class="scriptor-component-code-block">
+            <div class="toolbar-hash">
+              <button type="button" role="combobox" aria-label="Language mode">LaTeX</button>
+            </div>
+            <div class="code-body-hash">
+              <div class="line-hash"><span>E=mc^2</span></div>
+            </div>
+            <!-- the block renders a preview of itself, below its own source -->
+            <div class="preview-hash">
+              <span class="katex-display"><span class="katex">
+                <span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML">
+                  <semantics><mrow><mi>E</mi></mrow>
+                  <annotation encoding="application/x-tex">E=mc^2</annotation></semantics>
+                </math></span>
+                <span class="katex-html" aria-hidden="true"><span>E=mc</span><span>2</span></span>
+              </span></span>
+            </div>
+          </div>
+        </div>
+      </span>
+    </div>
+
+    <div class="scriptor-paragraph">
+      <span class="scriptor-textRun scriptor-inline">Given </span>
+      <span class="scriptor-inline">
+        <div class="scriptor-hosting-element scriptor-component-inline">
+          <span class="katex-display"><span class="katex">
+            <span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML">
+              <semantics><mrow><mi>e</mi></mrow>
+              <annotation encoding="application/x-tex">e^x &gt; t</annotation></semantics>
+            </math></span>
+            <span class="katex-html" aria-hidden="true"><span>e</span><span>x</span></span>
+          </span></span>
+        </div>
+      </span>
+      <span class="scriptor-textRun scriptor-inline"> holds.</span>
+      <br class="scriptor-EOP" />
+    </div>
+
+    <div class="scriptor-paragraph scriptor-listItem">
+      <ul>
+        <li class="scriptor-listItem-marker" role="checkbox" aria-checked="true"
+            aria-label="Checklist" aria-level="1" aria-posinset="1" aria-setsize="2">
+          <span class="scriptor-textRun scriptor-inline"
+                style="text-decoration: line-through;">Done already</span>
+        </li>
+      </ul>
+    </div>
+    <div class="scriptor-paragraph scriptor-listItem">
+      <ul>
+        <li class="scriptor-listItem-marker" role="checkbox" aria-checked="false"
+            aria-label="Checklist" aria-level="1" aria-posinset="2" aria-setsize="2">
+          <span class="scriptor-textRun scriptor-inline">Still to do</span>
+        </li>
+      </ul>
+    </div>
+
+  </div>
+</div>

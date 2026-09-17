@@ -22,7 +22,9 @@ export type Inline =
   /** A hard line break inside a paragraph (`<br>`), rendered as backslash-newline. */
   | { type: 'break' }
   /** An @mention or person chip, flattened to the display name. */
-  | { type: 'mention'; name: string };
+  | { type: 'mention'; name: string }
+  /** A LaTeX equation, rendered as `$...$` or `$$...$$`. */
+  | { type: 'math'; value: string; display: boolean };
 
 // ---------------------------------------------------------------------------
 // Block content

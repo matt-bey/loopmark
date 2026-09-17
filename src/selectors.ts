@@ -573,6 +573,11 @@ export const CODE_LANGUAGE_SELECTOR = '[role="combobox"][aria-label*="language" 
  */
 export const CODE_CHROME_SELECTOR = [
   '[role="combobox"]',
+  // A LaTeX block renders a KaTeX preview of itself below the source, so the
+  // fence would contain the equation three times: once as LaTeX, once as
+  // MathML for screen readers, once as the visual rendering.
+  '.katex',
+  '.katex-display',
   '[role="toolbar"]',
   'button',
   '[role="button"]',
@@ -621,3 +626,13 @@ export const COLLAPSED_SECTION_SELECTOR =
  */
 export const FLUENT_WRAPPER_SELECTOR =
   '.fui-FluentProvider, [data-testid="ComponentFluentProviderId"]';
+
+/**
+ * KaTeX renders every equation twice -- `.katex-mathml` for assistive tech and
+ * `.katex-html` for sight -- so reading the text of one gives the equation two
+ * or three times over ("ex->te32ex->te32ex->te32"). The LaTeX source is in the
+ * MathML annotation, which is the only faithful thing to export.
+ * VERIFIED 2026-09-16 against a saved Loop page.
+ */
+export const MATH_SELECTOR = '.katex-display, .katex, math';
+export const TEX_ANNOTATION_SELECTOR = 'annotation[encoding="application/x-tex"]';

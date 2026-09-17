@@ -39,6 +39,8 @@ import {
   TABLE_COUNT_SELECTOR,
   COLLAPSED_SECTION_SELECTOR,
   FLUENT_WRAPPER_SELECTOR,
+  MATH_SELECTOR,
+  TEX_ANNOTATION_SELECTOR,
 } from './selectors.js';
 import type {
   AlertKind,
@@ -203,6 +205,10 @@ function classify(el: Element): Kind {
     return 'heading';
   }
 
+  // Equations go to the inline path whole, so the LaTeX source is read once
+  // instead of the rendering being walked and emitted several times over.
+  if (isMath(el)) return 'inline';
+
   // Routed to the inline path so `votingSummary` can recover the tally from the
   // button's accessible name before the button itself is excluded.
   try {
@@ -274,6 +280,30 @@ function isCollapsedSection(el: Element): boolean {
   } catch {
     return false;
   }
+}
+
+function isMath(el: Element): boolean {
+  try {
+    return el.matches(MATH_SELECTOR);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Read an equation as its LaTeX source.
+ *
+ * Returns `null` for anything that is not KaTeX output, or for KaTeX with no
+ * TeX annotation -- in that case the caller falls through to the normal walk,
+ * which at least emits the rendered characters.
+ */
+function mathNode(el: Element): Inline | null {
+  if (!isMath(el)) return null;
+  const annotation = el.querySelector(TEX_ANNOTATION_SELECTOR);
+  const value = (annotation?.textContent ?? '').trim();
+  if (!value) return null;
+  // Inline `$...$` cannot span lines; a multi-line equation needs `$$`.
+  return { type: 'math', value, display: /\n/.test(value) };
 }
 
 function isFluentWrapper(el: Element): boolean {
@@ -531,6 +561,9 @@ function toInline(node: Node, ctx: Ctx): Inline[] {
       return [{ type: 'image', alt, src }];
     }
 
+    const math = mathNode(node);
+    if (math) return [math];
+
     if (isMention(node)) {
       const name = mentionName(node);
       return name ? [{ type: 'mention', name }] : [];
@@ -584,7 +617,7 @@ function toInline(node: Node, ctx: Ctx): Inline[] {
 function inlineIsEmpty(nodes: Inline[]): boolean {
   return !nodes.some((n) => {
     if (n.type === 'text') return n.value.trim() !== '';
-    if (n.type === 'code' || n.type === 'mention') return true;
+    if (n.type === 'code' || n.type === 'mention' || n.type === 'math') return true;
     if (n.type === 'image') return true;
     // A link is never empty -- worst case it renders as its bare URL.
     if (n.type === 'link') return true;
@@ -781,9 +814,11 @@ export function collectBlocks(el: Node, ctx: Ctx): Block[] {
           out.push(...buildParagraph(child, ctx));
           break;
         case 'task': {
+          const checked = checkedState(child) ?? false;
+          const taskBlocks = collectBlocks(child, ctx);
           const item: ListItem = {
-            checked: checkedState(child) ?? false,
-            blocks: collectBlocks(child, ctx),
+            checked,
+            blocks: checked ? stripStrikethrough(taskBlocks) : taskBlocks,
           };
           // Loop renders standalone task items as siblings rather than inside
           // a <ul>, so merge each into the run of tasks already in progress.
@@ -1044,6 +1079,44 @@ function ariaNumber(el: Element, attr: string): number | undefined {
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
+/**
+ * Remove strikethrough from a completed checklist item.
+ *
+ * Loop styles a checked item's text with `text-decoration: line-through`, and
+ * the converter reads computed style, so every completed task exported as
+ * `- [x] ~~One~~`. The strikethrough is a rendering of the same fact the `[x]`
+ * already states, not authored emphasis.
+ */
+function stripStrikethrough(blocks: Block[]): Block[] {
+  const inlines = (nodes: Inline[]): Inline[] =>
+    nodes.flatMap((node) => {
+      if (node.type === 'del') return inlines(node.children);
+      if (node.type === 'strong' || node.type === 'em') {
+        return [{ ...node, children: inlines(node.children) }];
+      }
+      if (node.type === 'link') return [{ ...node, children: inlines(node.children) }];
+      return [node];
+    });
+
+  return blocks.map((block) => {
+    switch (block.type) {
+      case 'paragraph':
+      case 'heading':
+        return { ...block, children: inlines(block.children) };
+      case 'quote':
+      case 'component':
+        return { ...block, blocks: stripStrikethrough(block.blocks) };
+      case 'list':
+        return {
+          ...block,
+          items: block.items.map((i) => ({ ...i, blocks: stripStrikethrough(i.blocks) })),
+        };
+      default:
+        return block;
+    }
+  });
+}
+
 export function buildList(listEl: Element, ctx: Ctx): Block[] {
   const ordered =
     listEl.tagName.toUpperCase() === 'OL' ||
@@ -1090,7 +1163,11 @@ export function buildList(listEl: Element, ctx: Ctx): Block[] {
     }
 
     const marker = loopListMarker(itemEl);
-    const item: ListItem = { checked: checkedState(itemEl), blocks };
+    const checked = checkedState(itemEl);
+    const item: ListItem = {
+      checked,
+      blocks: checked === true ? stripStrikethrough(blocks) : blocks,
+    };
     const level = ariaNumber(itemEl, 'aria-level');
     if (level !== undefined) item.level = level;
     if (marker !== null) item.ordered = markerIsOrdered(marker);
@@ -1531,6 +1608,12 @@ export function renderInline(nodes: Inline[]): string {
         break;
       case 'mention':
         out += escapeText(node.name);
+        break;
+      case 'math':
+        // Raw, never escaped: LaTeX is mostly backslashes, and escaping them
+        // would turn `\\frac` into something neither a renderer nor a reader
+        // can use.
+        out += node.display ? `$$\n${node.value}\n$$` : `$${node.value}$`;
         break;
     }
   }

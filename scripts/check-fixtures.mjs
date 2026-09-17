@@ -26,7 +26,14 @@ const BANNED = [
 ];
 
 /** Only reserved example domains are allowed in fixture URLs. */
-const ALLOWED_HOSTS = /^(?:[\w-]+\.)*example\.(?:com|invalid|org|net)$/i;
+/**
+ * Hosts a fixture may name. `example.*` is the reserved documentation space;
+ * `w3.org` is allowed because XML namespace URIs are part of the markup being
+ * reproduced (MathML declares `xmlns="http://www.w3.org/1998/Math/MathML"`)
+ * and a standards URL can never be the internal or customer data this gate
+ * exists to catch.
+ */
+const ALLOWED_HOSTS = /^(?:[\w-]+\.)*(?:example\.(?:com|invalid|org|net)|w3\.org)$/i;
 
 let failed = false;
 

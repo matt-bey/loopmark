@@ -710,3 +710,37 @@ describe('mentions, callouts and checklists (real markup)', () => {
     expect(md()).not.toMatch(/^ {6}- \[/m);
   });
 });
+
+describe('Loop demo objects (real markup)', () => {
+  const md = (): string => body(fixture('loop-demo-objects.html'));
+
+  it('fences a Mermaid diagram as ```mermaid with its source intact', () => {
+    const fence = /```mermaid\n([\s\S]*?)\n```/.exec(md());
+    expect(fence).not.toBeNull();
+    expect(fence![1]).toBe('flowchart TD\n  A[Need Diagrams?] -->|use| B[Mermaid]');
+  });
+
+  it('keeps the KaTeX preview out of a LaTeX fence', () => {
+    // The block renders a preview of itself, so the fence would otherwise hold
+    // the equation three times: as LaTeX, as MathML, and as the visual render.
+    const fence = /```latex\n([\s\S]*?)\n```/.exec(md());
+    expect(fence).not.toBeNull();
+    expect(fence![1]).toBe('E=mc^2');
+  });
+
+  it('reads inline maths as its LaTeX source, once', () => {
+    // KaTeX emits the equation twice, so a plain text walk triplicated it.
+    expect(md()).toContain('Given $e^x > t$ holds.');
+  });
+
+  it('does not escape backslashes inside maths', () => {
+    expect(md()).not.toContain('\\$');
+  });
+
+  it('drops the strikethrough Loop puts on a completed task', () => {
+    const out = md();
+    expect(out).toMatch(/^- \[x\] Done already$/m);
+    expect(out).not.toContain('~~');
+    expect(out).toMatch(/^- \[ \] Still to do$/m);
+  });
+});

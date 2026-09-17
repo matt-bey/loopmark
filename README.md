@@ -72,7 +72,8 @@ paste into a hand-made bookmark.
 | Voting tables | The tally is recovered from the vote button's accessible name, so a Votes column exports as `3 votes` rather than blank. |
 | Mentions | The display name only. Loop's avatar carries the person's initials and is `aria-hidden`, so a naive read gives "JPJake Poe". No identity resolution. |
 | Callouts | `> [!NOTE]`. Loop's callout is `[data-testid="block-callout-component"]`, wrapped in a Fluent provider whose class also says "callout" -- matching both wraps the output twice. |
-| Code | Inline and fenced. The language comes from Loop's toolbar combobox. A block Loop had not rendered says so instead of exporting its own buttons. |
+| Code | Inline and fenced. The language comes from Loop's toolbar combobox, so a Mermaid diagram fences as ```` ```mermaid ```` with its source intact. A block Loop had not rendered says so instead of exporting its own buttons. |
+| Maths | `$...$` / `$$...$$` from the LaTeX source in the MathML annotation. KaTeX renders each equation twice -- once for screen readers, once for sight -- so reading the text gave every equation two or three times over. |
 | Links | Recovered from Loop's `<span role="link" title="URL">` markup. |
 | Emphasis | Bold, italic, strikethrough, including style-only formatting. |
 | Callouts | Mapped to GitHub Alerts (`> [!WARNING]`) where the type is detectable. |
