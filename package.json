@@ -3,6 +3,17 @@
   "version": "0.1.0",
   "private": false,
   "description": "A zero-network bookmarklet that converts the Microsoft Loop page you are looking at into clean GitHub-flavored Markdown.",
+  "keywords": [
+    "microsoft-loop",
+    "loop",
+    "markdown",
+    "bookmarklet",
+    "export",
+    "gfm",
+    "scraper",
+    "zero-network"
+  ],
+  "author": "Matt Bey",
   "license": "MIT",
   "type": "module",
   "scripts": {
