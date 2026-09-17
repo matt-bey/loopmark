@@ -1237,7 +1237,12 @@ export function buildTable(el: Element, ctx: Ctx): Block | null {
 
 function buildTableRows(rows: Element[], ctx: Ctx): Block | null {
   const grid = rows.map((row) => rowCells(row).map((cell) => cellInline(cell, ctx)));
-  const nonEmpty = grid.filter((r) => r.length > 0);
+  // A row with no cells at all, or whose every cell is empty, is Loop's
+  // "add a row" placeholder rather than data. Keeping them emits runs of
+  // `|  |  |  |` that carry nothing.
+  const nonEmpty = grid.filter(
+    (row) => row.length > 0 && row.some((cell) => !inlineIsEmpty(cell)),
+  );
   if (nonEmpty.length === 0) return null;
 
   // GFM requires a header row. If the markup does not designate one, the

@@ -67,9 +67,11 @@ paste into a hand-made bookmark.
 | Heading levels | The page title owns the document's only `#`, and body headings shift down one level, so Loop's "Heading 1" becomes `##`. Loop pages routinely have several `aria-level="1"` headings, which would otherwise produce several competing H1s. Clamped at `######`. |
 | Paragraphs | Soft lines within a paragraph join with a Markdown hard break. |
 | Lists | Ordered, unordered, nested. Loop never nests lists in the DOM -- depth is `aria-level`, and numbering is a CSS custom property, since Loop emits no `<ol>` at all. |
-| Checklists | `- [ ]` / `- [x]` from checkbox state. |
+| Checklists | `- [ ]` / `- [x]` from `role="checkbox"` + `aria-checked` on the list marker. Nested items indent to the content column, not past the checkbox. |
 | Tables | GFM pipe tables. Cells run the full block pipeline, so paragraphs and lists inside a cell survive as `<br>`-joined content. Pipes escaped, ragged rows padded, the row-number gutter dropped. |
 | Voting tables | The tally is recovered from the vote button's accessible name, so a Votes column exports as `3 votes` rather than blank. |
+| Mentions | The display name only. Loop's avatar carries the person's initials and is `aria-hidden`, so a naive read gives "JPJake Poe". No identity resolution. |
+| Callouts | `> [!NOTE]`. Loop's callout is `[data-testid="block-callout-component"]`, wrapped in a Fluent provider whose class also says "callout" -- matching both wraps the output twice. |
 | Code | Inline and fenced. The language comes from Loop's toolbar combobox. A block Loop had not rendered says so instead of exporting its own buttons. |
 | Links | Recovered from Loop's `<span role="link" title="URL">` markup. |
 | Emphasis | Bold, italic, strikethrough, including style-only formatting. |

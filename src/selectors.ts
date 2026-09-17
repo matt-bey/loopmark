@@ -207,6 +207,17 @@ export const EXCLUDE_SELECTORS: readonly string[] = [
   // "column grabber" table that mirrors the real one row for row.
   '[data-automation-type="column-grabber-table"]',
   '[data-automation-type="table-column-resize-element"]',
+  /**
+   * Loop puts two things in a table's `<tfoot>`: an empty spacer row for the
+   * "add row" affordance, and a summary row of column aggregates. Neither is
+   * document content, and the summary row is the only row without the
+   * aria-hidden gutter cell -- so it was also making every table one column
+   * wider than it is, with a blank header.
+   * VERIFIED 2026-09-16 against a saved Loop page.
+   */
+  'tfoot',
+  '[data-rowid="SUMMARY_ROW_ID"]',
+  '[data-testid="summary-row-test-id"]',
 
   // Buttons are affordances, never prose. Loop puts a "New" row button inside
   // every table, "Go to line" / "Show more lines" inside every code block, and

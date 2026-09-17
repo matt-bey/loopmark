@@ -125,7 +125,28 @@
                           </div></div>
                         </td>
                       </tr>
+                      <tr>
+                        <td aria-hidden="true"><div><span role="presentation"><div>3</div></span></div></td>
+                        <td role="cell"></td>
+                        <td role="cell"></td>
+                        <td role="cell"></td>
+                      </tr>
                     </tbody>
+                    <!--
+                      Loop's <tfoot>: an empty spacer row for "add row", and a
+                      summary row of column aggregates. The summary row is the
+                      only row WITHOUT the aria-hidden gutter cell, so counting
+                      it makes the table one column wider than it is.
+                    -->
+                    <tfoot>
+                      <tr><td></td></tr>
+                      <tr role="row" data-rowid="SUMMARY_ROW_ID" data-testid="summary-row-test-id">
+                        <td></td>
+                        <td data-testid="summary-cell-test-id"></td>
+                        <td data-testid="summary-cell-test-id"></td>
+                        <td data-testid="summary-cell-test-id">O1</td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
 

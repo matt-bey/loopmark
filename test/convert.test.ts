@@ -477,6 +477,21 @@ describe('Loop tables (real markup)', () => {
     expect(md()).toContain('• Sign-off in QA<br>• Pipe \\| in a cell');
   });
 
+  it('drops the tfoot summary row and its phantom column', () => {
+    const out = md();
+    // The summary row has no aria-hidden gutter cell, so counting it widened
+    // every table by one column with a blank header.
+    expect(out).not.toContain('O1');
+    expect(out).toContain('| Environment | Tag | Notes |');
+    for (const row of out.split('\n').filter((l) => l.startsWith('|'))) {
+      expect(row.split(/(?<!\\)\|/).length - 2).toBe(3);
+    }
+  });
+
+  it('drops an all-empty "add a row" placeholder row', () => {
+    expect(md()).not.toMatch(/^\|\s*\|\s*\|\s*\|$/m);
+  });
+
   it('escapes a pipe inside cell content so the table stays valid', () => {
     expect(md()).toContain('\\|');
   });
