@@ -125,14 +125,17 @@ function installHtml(url, stats) {
   th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid rgba(127,127,127,.25); }
   .note { border-left: 3px solid #d0a13a; padding: 10px 14px; background: rgba(208,161,58,.1);
           border-radius: 0 8px 8px 0; font-size: 14.5px; }
+  footer { margin: 56px 0 0; padding: 20px 0 0; border-top: 1px solid rgba(127,127,127,.25);
+           font-size: 13.5px; color: #6b7280; }
+  footer a { color: inherit; }
+  footer p { margin: 0 0 6px; }
 </style>
 </head>
 <body>
 
 <h1>loopmark</h1>
 <p class="sub">Convert the Microsoft Loop page you are looking at into clean Markdown.
-   Makes zero network requests.<br>
-   <a href="${REPO_URL}">Source, documentation and issues on GitHub</a></p>
+   Makes zero network requests.</p>
 
 <div class="drag">
   <a class="bookmarklet" href="${escapeHtml(url)}">loopmark</a>
@@ -189,6 +192,18 @@ function installHtml(url, stats) {
 <p>The Source ID is a digest of <a href="${REPO_URL}/tree/main/src">src/</a>, reproducible
    from any checkout, and it is shown in the overlay's Details pane &mdash; so an export
    that looks wrong can always be traced to the code that produced it.</p>
+
+<footer>
+  <p><a href="${REPO_URL}">github.com/matt-bey/loopmark</a> &middot;
+     <a href="${REPO_URL}/blob/main/LICENSE">MIT licensed</a> &middot;
+     <a href="${REPO_URL}/issues">Report an issue</a></p>
+  <p>Not affiliated with, endorsed by, or supported by Microsoft. Loop is their
+     trademark; this reads the page your browser has already rendered.</p>
+  <p>Selector knowledge derived from
+     <a href="https://github.com/stuffbucket/loopd">stuffbucket/loopd</a> (MIT);
+     no loopd code is included. See
+     <a href="${REPO_URL}/blob/main/NOTICE">NOTICE</a>.</p>
+</footer>
 
 </body>
 </html>
