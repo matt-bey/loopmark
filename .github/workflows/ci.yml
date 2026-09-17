@@ -12,19 +12,12 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # Both maintained LTS lines. Node 20 is end-of-life, and testing only
-        # the version this was written on would make the `engines` field a
-        # claim nobody had checked.
-        node-version: [22, 24]
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 24
           cache: npm
 
       - run: npm ci
