@@ -157,7 +157,8 @@ function installHtml(url, stats) {
 <ol>
   <li>Scrolls the page to force virtualized content to render, then scrolls back.</li>
   <li>Reads the rendered DOM, including open shadow roots.</li>
-  <li>Converts it to GitHub-flavored Markdown.</li>
+  <li>Converts it to GitHub-flavored Markdown, including any comment threads
+      the comments pane has rendered.</li>
   <li>Copies it to your clipboard and shows it in an overlay. <code>Esc</code> closes the overlay.</li>
 </ol>
 

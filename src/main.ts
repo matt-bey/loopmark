@@ -15,6 +15,7 @@ import {
   walkComposed,
   type WalkStats,
 } from './acquire.js';
+import { captureComments } from './comments.js';
 import { convert } from './convert.js';
 import { isLoopHost, LOOP_HOSTS, PREPARE_PASSES } from './selectors.js';
 import type { Diagnostics } from './types.js';
@@ -36,6 +37,8 @@ async function run(): Promise<void> {
     elementsVisited: 0,
     droppedDataImages: 0,
     collapsedSections: [],
+    commentThreads: 0,
+    commentsAnchored: 0,
     warnings: [],
   };
 
@@ -95,12 +98,21 @@ async function run(): Promise<void> {
     );
   }
 
-  // 4. Convert.
+  // 4. Read the comment threads.
+  //
+  //    BEFORE converting, and after all scrolling has finished: anchoring a
+  //    thread to the block it annotates is a comparison of two live
+  //    `getBoundingClientRect()` values, so both have to be measured against
+  //    the same, settled layout. Reading only; nothing is clicked or expanded.
+  const comments = captureComments(root, document, diagnostics);
+
+  // 5. Convert.
   const title = findTitle(document);
   const result = convert({
     root,
     meta: { title, url: location.href, exportedAt: new Date().toISOString() },
     diagnostics,
+    comments,
   });
 
   if (result.markdown.trim().length < 80) {
@@ -109,7 +121,7 @@ async function run(): Promise<void> {
     );
   }
 
-  // 5. Copy first, then show. The overlay reports which path succeeded rather
+  // 6. Copy first, then show. The overlay reports which path succeeded rather
   //    than copying silently.
   const autoCopy = await copyText(result.markdown);
 

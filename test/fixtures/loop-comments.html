@@ -1,0 +1,137 @@
+<!--
+  Loop comment threads ("Conversa"), from a saved Loop page on 2026-09-17.
+
+  Load-bearing details:
+    - the comments pane is a SIBLING of the page content, not part of it, so
+      the body converts identically whether or not the pane is open
+    - a comment body is a nested Scriptor document, so it carries real inline
+      formatting and must go through the block pipeline, not a text read
+    - the avatar renders the author's initials as a real text node, so reading
+      the header as text yields "PAPerson A" -- the accessible name is the
+      only clean source, exactly as with @mentions
+    - Loop renders ONLY the message that opened a thread; replies exist as a
+      count plus one avatar each, so the reply authors are recoverable but
+      their text is not
+    - the avatars run author-first, then one per reply, in order
+-->
+<div class="scriptor-canvas">
+
+  <div class="scriptor-pageContainer">
+    <div class="scriptor-pageBody">
+      <div class="scriptor-paragraph" id="para-one">
+        <span class="scriptor-textRun scriptor-inline">Base images are rebuilt weekly.</span>
+        <br class="scriptor-EOP" />
+      </div>
+      <div class="scriptor-paragraph" id="para-two">
+        <span class="scriptor-textRun scriptor-inline">Each team owns its own canary.</span>
+        <br class="scriptor-EOP" />
+      </div>
+      <div class="scriptor-paragraph" id="para-three">
+        <span class="scriptor-textRun scriptor-inline">Upstream pulls are mirrored first.</span>
+        <br class="scriptor-EOP" />
+      </div>
+    </div>
+  </div>
+
+  <!-- The in-page affordance. Present even when the pane is CLOSED, which is
+       the only way to tell "no comments" apart from "comments not loaded". -->
+  <div class="scriptor-highlightWrapper">
+    <div class="scriptor-conversa-centralizedViewButton" style="top: 151px; height: 62px;">
+      <button type="button" aria-label="Open comments"
+              data-automation-type="CentralizedViewButton"></button>
+    </div>
+  </div>
+
+  <div id="comments-hosting-element">
+    <div data-automation-type="centralizedGutterView">
+      <div role="feed">
+
+        <!-- A thread with no replies. -->
+        <div id="thread-aaa" style="position: absolute; top: 120px;">
+          <div class="conversa-comment scriptor-hosting-element" data-automation-type="gutterView">
+            <div id="c-msg-aaa" role="article">
+              <div id="listview-thread-aaa" data-automation-type="listView">
+                <div role="comment" aria-labelledby="message-aaa" aria-level="1"
+                     data-automation-type="messageItem">
+                  <div id="message-aaa" aria-label="Comment thread started by Person A">
+                    <div class="fui-Persona">
+                      <span role="img" class="fui-Avatar fui-Persona__avatar" aria-label="Person A">
+                        <span class="fui-Avatar__initials">PA</span>
+                      </span>
+                    </div>
+                    <div>
+                      <span>Person A</span>
+                      <div><time data-automation-type="editedMessageIndicator">43min ago</time></div>
+                    </div>
+                  </div>
+                  <div role="group" aria-label="Comment content">
+                    <div class="scriptor-canvas">
+                      <div class="scriptor-pageContainer" role="document" aria-label="Comment content">
+                        <div class="scriptor-pageFrame scriptor-firstPage">
+                          <div class="scriptor-pageBody">
+                            <div class="scriptor-paragraph">
+                              <span class="scriptor-textRun scriptor-inline">Weekly feels </span>
+                              <strong><span class="scriptor-textRun scriptor-inline">too slow</span></strong>
+                              <span class="scriptor-textRun scriptor-inline"> to me.</span>
+                              <br class="scriptor-EOP" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- A thread whose two replies Loop did not render. -->
+        <div id="thread-bbb" style="position: absolute; top: 480px;">
+          <div class="conversa-comment scriptor-hosting-element" data-automation-type="gutterView">
+            <div id="c-msg-bbb" role="article">
+              <div id="listview-thread-bbb" data-automation-type="listView">
+                <div role="comment" aria-labelledby="message-bbb" aria-level="1"
+                     data-automation-type="messageItem">
+                  <div id="message-bbb" aria-label="Comment thread started by Person A with 2 replies">
+                    <div class="fui-Persona">
+                      <span role="img" class="fui-Avatar fui-Persona__avatar" aria-label="Person A">
+                        <span class="fui-Avatar__initials">PA</span>
+                      </span>
+                    </div>
+                    <div>
+                      <span>Person A</span>
+                      <div><time data-automation-type="editedMessageIndicator">47min ago</time></div>
+                    </div>
+                  </div>
+                  <div role="group" aria-label="Comment content">
+                    <div class="scriptor-pageContainer" role="document" aria-label="Comment content">
+                      <div class="scriptor-pageBody">
+                        <div class="scriptor-paragraph">
+                          <span class="scriptor-textRun scriptor-inline">Should this be per image?</span>
+                          <br class="scriptor-EOP" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- The reply chain: a count, and one avatar per replier. -->
+                  <div>
+                    <span data-automation-type="replyCount">2 replies</span>
+                    <span role="img" class="fui-Avatar" aria-label="Reviewer B">
+                      <span class="fui-Avatar__initials">RB</span>
+                    </span>
+                    <span role="img" class="fui-Avatar" aria-label="Person A">
+                      <span class="fui-Avatar__initials">PA</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>

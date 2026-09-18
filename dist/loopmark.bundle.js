@@ -62,6 +62,23 @@
     // document's `# ` heading, so including it in the body duplicates it.
     ".scriptor-pageTitle",
     '[data-automation-type="Title"]',
+    /**
+     * The comments pane. Read separately by `captureComments` and rendered as
+     * footnotes, so including it here would print every thread twice -- once
+     * mid-document wherever the pane happens to sit, and once as a footnote.
+     *
+     * It lives outside `.scriptor-pageContainer`, so this only bites when the
+     * content root falls through to `.scriptor-canvas`; that fallback exists, so
+     * the exclusion is not theoretical. Excluding the pane does NOT hinder
+     * reading it: exclusions are tested against each element as the walk reaches
+     * it, and comment extraction starts its own walk inside a thread.
+     * VERIFIED 2026-09-17 against a saved Loop page.
+     */
+    "#comments-hosting-element",
+    '[data-automation-type="centralizedGutterView"]',
+    '[data-automation-type="gutterView"]',
+    ".conversa-comment",
+    ".scriptor-conversa-centralizedViewButton",
     // Editor affordances rendered inside the content region.
     '[data-testid="comment-thread"]',
     '[class*="commentThread" i]',
@@ -270,6 +287,25 @@
   var FLUENT_WRAPPER_SELECTOR = '.fui-FluentProvider, [data-testid="ComponentFluentProviderId"]';
   var MATH_SELECTOR = ".katex-display, .katex, math";
   var TEX_ANNOTATION_SELECTOR = 'annotation[encoding="application/x-tex"]';
+  var COMMENTS_PANE_SELECTOR = '#comments-hosting-element, [data-automation-type="centralizedGutterView"]';
+  var COMMENT_FEED_SELECTOR = '[role="feed"]';
+  var COMMENT_THREAD_SELECTOR = '[data-automation-type="gutterView"], .conversa-comment';
+  var COMMENT_MESSAGE_SELECTOR = '[role="comment"], [data-automation-type="messageItem"]';
+  var COMMENT_BODY_SELECTOR = '[role="group"][aria-label="Comment content" i]';
+  var COMMENT_AVATAR_SELECTOR = '[role="img"][aria-label]';
+  var COMMENT_TIME_SELECTOR = "time";
+  var COMMENT_REPLY_COUNT_SELECTOR = '[data-automation-type="replyCount"]';
+  var COMMENT_REPLY_COUNT_PATTERN = /^\s*(\d+|one)\s+repl(?:y|ies)\s*$/i;
+  var COMMENT_STARTED_BY_PATTERN = /comment thread started by\s+(.+?)(?:\s+with\s+.*)?$/i;
+  var COMMENTS_PRESENT_SELECTOR = '[data-automation-type="CentralizedViewButton"], .scriptor-conversa-centralizedViewButton';
+  var COMMENT_ANCHOR_CANDIDATE_SELECTOR = [
+    ".scriptor-paragraph",
+    '[class*="scriptor-paragraph" i]',
+    '[role="heading"]',
+    "h1, h2, h3, h4, h5, h6"
+  ].join(", ");
+  var COMMENT_ANCHOR_MAX_DRIFT = 600;
+  var COMMENT_ANCHOR_TOLERANCE = 8;
 
   // src/acquire.ts
   var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -876,6 +912,7 @@
       if (n.type === "image") return true;
       if (n.type === "link") return true;
       if (n.type === "break") return false;
+      if (n.type === "footnoteRef") return true;
       return !inlineIsEmpty(n.children);
     });
   }
@@ -960,6 +997,24 @@
         }
         out.push({ type: "paragraph", children: trimmed });
       };
+      const attachComments = (child, producedBlocks) => {
+        const threads = ctx.commentAnchors?.get(child);
+        if (!threads || threads.length === 0) return;
+        const refs = threads.map((thread) => ({
+          type: "footnoteRef",
+          label: thread.label
+        }));
+        if (!producedBlocks) {
+          pending.push(...refs);
+          return;
+        }
+        const last = out[out.length - 1];
+        if (last && (last.type === "paragraph" || last.type === "heading")) {
+          last.children.push(...refs);
+          return;
+        }
+        out.push({ type: "paragraph", children: refs });
+      };
       for (const child of composedChildren(el2)) {
         if (isText(child)) {
           pending.push(...toInline(child, ctx));
@@ -970,9 +1025,11 @@
         if (kind === "skip") continue;
         if (kind === "inline") {
           pending.push(...toInline(child, ctx));
+          attachComments(child, false);
           continue;
         }
         flush();
+        const blocksBefore = out.length;
         switch (kind) {
           case "heading": {
             const children = trimInline(inlineChildren(child, ctx));
@@ -1056,6 +1113,7 @@
             break;
           }
         }
+        attachComments(child, out.length > blocksBefore);
       }
       flush();
       return mergeAndNestLists(out);
@@ -1338,8 +1396,8 @@
           break;
         case "list":
           for (const item of block.items) {
-            const box = item.checked === null ? "" : item.checked ? "[x] " : "[ ] ";
-            push([{ type: "text", value: `\u2022 ${box}` }, ...blocksToInline(item.blocks)]);
+            const box2 = item.checked === null ? "" : item.checked ? "[x] " : "[ ] ";
+            push([{ type: "text", value: `\u2022 ${box2}` }, ...blocksToInline(item.blocks)]);
           }
           break;
         case "code":
@@ -1571,6 +1629,9 @@
 ${node.value}
 $$` : `$${node.value}$`;
           break;
+        case "footnoteRef":
+          out += `[^${node.label}]`;
+          break;
       }
     }
     return out.replace(/[ \t]+/g, " ").replace(/ ?\\\n ?/g, "\\\n");
@@ -1651,9 +1712,9 @@ ${fence}`,
           const lines = [];
           block.items.forEach((item, index) => {
             const marker = block.ordered ? `${block.start + index}.` : "-";
-            const box = item.checked === null ? "" : item.checked ? "[x] " : "[ ] ";
+            const box2 = item.checked === null ? "" : item.checked ? "[x] " : "[ ] ";
             const body = renderBlocks(item.blocks, true);
-            const firstPrefix = `${marker} ${box}`;
+            const firstPrefix = `${marker} ${box2}`;
             const contPrefix = " ".repeat(marker.length + 1);
             lines.push(indentLines(body, contPrefix, firstPrefix));
           });
@@ -1727,14 +1788,90 @@ ${fence}`,
       }
     });
   }
-  function convert({ root, meta, diagnostics }) {
-    const ctx = { diag: diagnostics, imageUrls: [], depth: 0, tableDepth: 0 };
+  function attribution(message, bold = true) {
+    const name = escapeText(message.author);
+    const author = bold ? `**${name}**` : name;
+    return message.timestamp ? `${author} \xB7 ${escapeText(message.timestamp)}` : author;
+  }
+  function threadBody(thread, skipFirstAttribution = false) {
+    const parts = thread.messages.map(
+      (message, i) => i === 0 && skipFirstAttribution ? renderBlocks(message.blocks) : `${attribution(message)}
+
+${renderBlocks(message.blocks)}`
+    );
+    if (thread.hiddenReplies > 0) {
+      const who = thread.hiddenReplyAuthors.length > 0 ? ` from ${thread.hiddenReplyAuthors.map(escapeText).join(", ")}` : "";
+      const plural = thread.hiddenReplies === 1 ? "reply" : "replies";
+      parts.push(
+        `_${thread.hiddenReplies} ${plural}${who} not captured \u2014 Loop only renders the first message of a thread in the comments pane._`
+      );
+    }
+    return parts.join("\n\n").trim();
+  }
+  function renderFootnotes(threads) {
+    return threads.map((thread) => indentLines(threadBody(thread), "    ", `[^${thread.label}]: `).trimEnd()).join("\n\n");
+  }
+  function renderCommentSection(threads) {
+    const parts = threads.map((thread, i) => {
+      const first = thread.messages[0];
+      const who = first ? attribution(first, false) : "Comment";
+      return `### ${i + 1}. ${who}
+
+${threadBody(thread, true)}`;
+    });
+    return `## Comments
+
+_Loop records no link between a comment and the text it refers to, so these are listed in the order they appear down the page._
+
+` + parts.join("\n\n");
+  }
+  function commentsNote(capture) {
+    const n = capture.threads.length;
+    const anchored = n - capture.unanchored.length;
+    const placement = capture.unanchored.length === 0 ? "each marked at the point it was made" : anchored === 0 ? "listed in document order; Loop does not record which text they refer to" : `${anchored} marked at the point it was made, ${capture.unanchored.length} listed below`;
+    return `<!-- loopmark: ${n} comment thread(s) read from Loop, ${placement}. Reply text is not rendered by Loop and could not be captured. -->`;
+  }
+  function convert({
+    root,
+    meta,
+    diagnostics,
+    comments = EMPTY_CAPTURE
+  }) {
+    const ctx = {
+      diag: diagnostics,
+      imageUrls: [],
+      depth: 0,
+      tableDepth: 0,
+      commentAnchors: comments.anchors
+    };
     const blocks = collectBlocks(root, ctx);
-    const doc = { meta, blocks };
+    const doc = { meta, blocks, comments: comments.threads };
     let markdown = `# ${meta.title.replace(/\n/g, " ").trim() || "Untitled"}
 
 ` + renderBlocks(shiftHeadings(blocks, 1));
     warnOnMissingComponents(root, blocks, diagnostics);
+    diagnostics.commentThreads = comments.threads.length;
+    diagnostics.commentsAnchored = comments.threads.length - comments.unanchored.length;
+    if (comments.threads.length > 0) {
+      markdown += `
+
+${commentsNote(comments)}`;
+      const anchored = comments.threads.filter(
+        (thread) => !comments.unanchored.includes(thread)
+      );
+      if (anchored.length > 0) markdown += `
+
+${renderFootnotes(anchored)}`;
+      if (comments.unanchored.length > 0) {
+        markdown += `
+
+${renderCommentSection(comments.unanchored)}`;
+      }
+    } else if (comments.paneClosed) {
+      diagnostics.warnings.push(
+        "This page has comments, but the comments pane was closed so they could not be read. Open comments in Loop and export again."
+      );
+    }
     const uniqueImages = Array.from(new Set(ctx.imageUrls));
     if (uniqueImages.length > 0) {
       markdown += `
@@ -1757,9 +1894,183 @@ ${fence}`,
     markdown = markdown.replace(/\n{3,}/g, "\n\n");
     return { markdown, doc, diagnostics, imageUrls: uniqueImages };
   }
+  function convertFragment(root, diag) {
+    return collectBlocks(root, { diag, imageUrls: [], depth: 0, tableDepth: 0 });
+  }
+
+  // src/comments.ts
+  var EMPTY_CAPTURE = {
+    threads: [],
+    anchors: /* @__PURE__ */ new Map(),
+    unanchored: [],
+    paneClosed: false
+  };
+  function safeAll(root, selector) {
+    try {
+      return Array.from(root.querySelectorAll(selector));
+    } catch {
+      return [];
+    }
+  }
+  function threadElements(scope) {
+    const found = [];
+    for (const pane of safeAll(scope, COMMENTS_PANE_SELECTOR)) {
+      const feed = pane.querySelector(COMMENT_FEED_SELECTOR) ?? pane;
+      for (const el2 of safeAll(pane, COMMENT_THREAD_SELECTOR)) {
+        const wrapper = positionedWrapper(el2, feed);
+        if (found.some((seen) => seen === wrapper || seen.contains(wrapper))) continue;
+        found.push(wrapper);
+      }
+    }
+    return found;
+  }
+  function positionedWrapper(el2, feed) {
+    let node = el2;
+    while (node.parentElement && node.parentElement !== feed && feed.contains(node)) {
+      node = node.parentElement;
+    }
+    return feed.contains(node) ? node : el2;
+  }
+  function parseReplyCount(text) {
+    const match = COMMENT_REPLY_COUNT_PATTERN.exec(text ?? "");
+    if (!match) return 0;
+    const value = match[1].toLowerCase();
+    if (value === "one") return 1;
+    const n = Number.parseInt(value, 10);
+    return Number.isFinite(n) ? n : 0;
+  }
+  function avatarNames(scope) {
+    const names = [];
+    for (const el2 of safeAll(scope, COMMENT_AVATAR_SELECTOR)) {
+      const name = (el2.getAttribute("aria-label") ?? "").trim();
+      if (name) names.push(name);
+    }
+    return names;
+  }
+  function messageAuthor(message) {
+    const fromAvatar = avatarNames(message)[0];
+    if (fromAvatar) return fromAvatar;
+    const labelledBy = message.getAttribute("aria-labelledby");
+    const scope = labelledBy ? message.ownerDocument.getElementById(labelledBy) ?? message : message;
+    const label = scope.getAttribute("aria-label") ?? "";
+    const match = COMMENT_STARTED_BY_PATTERN.exec(label);
+    return match?.[1]?.trim() || "Unknown";
+  }
+  function messageTimestamp(message) {
+    const time = message.querySelector(COMMENT_TIME_SELECTOR);
+    const text = (time?.textContent ?? "").replace(/\s+/g, " ").trim();
+    return text || null;
+  }
+  function readMessage(message, diag) {
+    const body = message.querySelector(COMMENT_BODY_SELECTOR);
+    if (!body) return null;
+    const blocks = convertFragment(body, diag);
+    if (blocks.length === 0) return null;
+    return {
+      author: messageAuthor(message),
+      timestamp: messageTimestamp(message),
+      blocks
+    };
+  }
+  function readThread(el2, index, diag) {
+    const messageEls = safeAll(el2, COMMENT_MESSAGE_SELECTOR).filter(
+      // `[role="comment"]` and `[data-automation-type="messageItem"]` sit on the
+      // same element today; take each message once.
+      (m, i, all) => !all.some((other, j) => j < i && other.contains(m))
+    );
+    const messages = [];
+    for (const messageEl of messageEls) {
+      const message = readMessage(messageEl, diag);
+      if (message) messages.push(message);
+    }
+    if (messages.length === 0) return null;
+    const hiddenReplies = parseReplyCount(
+      el2.querySelector(COMMENT_REPLY_COUNT_SELECTOR)?.textContent
+    );
+    const hiddenReplyAuthors = hiddenReplies ? Array.from(new Set(avatarNames(el2).slice(messages.length))) : [];
+    return {
+      id: threadId(el2, index),
+      label: `c${index + 1}`,
+      messages,
+      hiddenReplies,
+      hiddenReplyAuthors
+    };
+  }
+  function threadId(el2, index) {
+    let node = el2;
+    for (let hops = 0; node && hops < 4; hops += 1) {
+      const id = node.id ?? "";
+      if (id && !id.startsWith("listview-")) return id.replace(/^c-/, "");
+      node = composedParent(node);
+    }
+    return `thread-${index + 1}`;
+  }
+  function box(el2) {
+    const rect = el2.getBoundingClientRect?.();
+    if (!rect) return null;
+    if (rect.height === 0 && rect.width === 0 && rect.top === 0) return null;
+    return { el: el2, top: rect.top, bottom: rect.bottom };
+  }
+  function anchorThreads(threads, root) {
+    const anchors = /* @__PURE__ */ new Map();
+    const unanchored = [];
+    const candidates = [];
+    for (const el2 of safeAll(root, COMMENT_ANCHOR_CANDIDATE_SELECTOR)) {
+      const enclosing = el2.parentElement?.closest(COMMENT_ANCHOR_CANDIDATE_SELECTOR);
+      if (enclosing && root.contains(enclosing)) continue;
+      if (el2.closest(COMMENTS_PANE_SELECTOR)) continue;
+      const b = box(el2);
+      if (b) candidates.push(b);
+    }
+    candidates.sort((a, b) => a.top - b.top);
+    for (const { thread, el: el2 } of threads) {
+      const card = box(el2);
+      if (!card || candidates.length === 0) {
+        unanchored.push(thread);
+        continue;
+      }
+      let best = null;
+      for (const candidate of candidates) {
+        if (candidate.top <= card.top + COMMENT_ANCHOR_TOLERANCE) best = candidate;
+        else break;
+      }
+      if (!best && candidates[0].top - card.top <= COMMENT_ANCHOR_MAX_DRIFT) {
+        best = candidates[0];
+      }
+      if (!best || card.top - best.top > COMMENT_ANCHOR_MAX_DRIFT) {
+        unanchored.push(thread);
+        continue;
+      }
+      const existing = anchors.get(best.el);
+      if (existing) existing.push(thread);
+      else anchors.set(best.el, [thread]);
+    }
+    return { anchors, unanchored };
+  }
+  function captureComments(root, scope, diag) {
+    const elements = threadElements(scope);
+    const read = [];
+    for (const [index, el2] of elements.entries()) {
+      const thread = readThread(el2, index, diag);
+      if (thread) read.push({ thread, el: el2 });
+    }
+    read.forEach(({ thread }, i) => {
+      thread.label = `c${i + 1}`;
+    });
+    const threads = read.map(({ thread }) => thread);
+    diag.commentThreads = threads.length;
+    if (threads.length === 0) {
+      const paneClosed = safeAll(scope, COMMENTS_PRESENT_SELECTOR).length > 0;
+      diag.commentsAnchored = 0;
+      return { threads: [], anchors: /* @__PURE__ */ new Map(), unanchored: [], paneClosed };
+    }
+    const { anchors, unanchored } = anchorThreads(read, root);
+    diag.commentsAnchored = threads.length - unanchored.length;
+    return { threads, anchors, unanchored, paneClosed: false };
+  }
 
   // src/ui.ts
-  var BUILD = true ? "ee0621ded6fa" : "dev";
+  var BUILD = true ? "f9ecd041e56a" : "dev";
   var OVERLAY_TAG = "loopmark-overlay";
   var STYLE = `
 :host { all: initial; }
@@ -1919,7 +2230,8 @@ details pre { margin: 8px 0 0; padding: 10px; background: #f3f5f8; border-radius
           `shadow roots pierced  : ${diagnostics.shadowRootsPierced}`,
           `disclosures expanded  : ${diagnostics.expandedWidgets}`,
           `unrecognized elements : ${diagnostics.unrecognizedElements}`,
-          `unrecognized tags     : ${diagnostics.unrecognizedSamples.join(", ") || "(none)"}`
+          `unrecognized tags     : ${diagnostics.unrecognizedSamples.join(", ") || "(none)"}`,
+          `comment threads       : ${diagnostics.commentThreads}` + (diagnostics.commentThreads > 0 ? ` (${diagnostics.commentsAnchored} placed in the text)` : "")
         ].join("\n")
       })
     ]);
@@ -2045,6 +2357,8 @@ details pre { margin: 8px 0 0; padding: 10px; background: #f3f5f8; border-radius
       elementsVisited: 0,
       droppedDataImages: 0,
       collapsedSections: [],
+      commentThreads: 0,
+      commentsAnchored: 0,
       warnings: []
     };
     let { root, strategy, rejected } = findContentRoot(document);
@@ -2080,11 +2394,13 @@ details pre { margin: 8px 0 0; padding: 10px; background: #f3f5f8; border-radius
         "No open shadow roots were found anywhere on the page. If content is missing, Loop may have switched to closed shadow roots, which no bookmarklet can read."
       );
     }
+    const comments = captureComments(root, document, diagnostics);
     const title = findTitle(document);
     const result = convert({
       root,
       meta: { title, url: location.href, exportedAt: (/* @__PURE__ */ new Date()).toISOString() },
-      diagnostics
+      diagnostics,
+      comments
     });
     if (result.markdown.trim().length < 80) {
       diagnostics.warnings.push(

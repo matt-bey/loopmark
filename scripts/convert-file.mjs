@@ -75,5 +75,9 @@ console.error(`  content root  : ${d.contentRootStrategy}`);
 console.error(`  markdown      : ${result.markdown.length} chars, ${result.markdown.split('\n').length} lines`);
 console.error(`  tables        : ${(result.markdown.match(/^\| --- /gm) ?? []).length}`);
 console.error(`  data: images  : ${d.droppedDataImages} replaced with a placeholder`);
+console.error(
+  `  comments      : ${d.commentThreads} thread(s)` +
+    (d.commentThreads > 0 ? `, ${d.commentsAnchored} anchored` : ''),
+);
 console.error(`  unrecognized  : ${d.unrecognizedElements}${d.unrecognizedSamples.length ? ` (${d.unrecognizedSamples.join(', ')})` : ''}`);
 for (const warning of d.warnings) console.error(`  warning       : ${warning}`);

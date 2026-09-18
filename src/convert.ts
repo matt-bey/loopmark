@@ -42,9 +42,13 @@ import {
   MATH_SELECTOR,
   TEX_ANNOTATION_SELECTOR,
 } from './selectors.js';
+import type { CommentCapture } from './comments.js';
+import { EMPTY_CAPTURE } from './comments.js';
 import type {
   AlertKind,
   Block,
+  CommentMessage,
+  CommentThread,
   ConversionResult,
   Diagnostics,
   DocMeta,
@@ -431,6 +435,12 @@ interface Ctx {
   depth: number;
   /** How many tables deep the walk currently is. */
   tableDepth: number;
+  /**
+   * Comment threads keyed by the element they annotate. Consulted as the walk
+   * reaches each element, so a marker lands in the text flow without the DOM
+   * ever being touched.
+   */
+  commentAnchors?: Map<Element, CommentThread[]>;
 }
 
 const MAX_DEPTH = 120;
@@ -622,6 +632,9 @@ function inlineIsEmpty(nodes: Inline[]): boolean {
     // A link is never empty -- worst case it renders as its bare URL.
     if (n.type === 'link') return true;
     if (n.type === 'break') return false;
+    // A paragraph whose only content is a comment marker still has to survive:
+    // it is how a thread anchored to a table or a code block gets rendered.
+    if (n.type === 'footnoteRef') return true;
     return !inlineIsEmpty(n.children);
   });
 }
@@ -739,6 +752,36 @@ export function collectBlocks(el: Node, ctx: Ctx): Block[] {
       out.push({ type: 'paragraph', children: trimmed });
     };
 
+    /**
+     * Place the comment markers belonging to `child`.
+     *
+     * `producedBlocks` says whether `child` emitted anything: a paragraph that
+     * converted to nothing must not hand its marker to whatever block happened
+     * to precede it, which would silently move the comment.
+     */
+    const attachComments = (child: Element, producedBlocks: boolean): void => {
+      const threads = ctx.commentAnchors?.get(child);
+      if (!threads || threads.length === 0) return;
+      const refs: Inline[] = threads.map((thread) => ({
+        type: 'footnoteRef',
+        label: thread.label,
+      }));
+
+      if (!producedBlocks) {
+        // Still in the inline buffer, so the marker rides along with the text.
+        pending.push(...refs);
+        return;
+      }
+      const last = out[out.length - 1];
+      if (last && (last.type === 'paragraph' || last.type === 'heading')) {
+        last.children.push(...refs);
+        return;
+      }
+      // A table, code block or divider has nowhere to put an inline marker, so
+      // the reference becomes a line of its own directly beneath it.
+      out.push({ type: 'paragraph', children: refs });
+    };
+
     for (const child of composedChildren(el)) {
       if (isText(child)) {
         pending.push(...toInline(child, ctx));
@@ -750,10 +793,12 @@ export function collectBlocks(el: Node, ctx: Ctx): Block[] {
       if (kind === 'skip') continue;
       if (kind === 'inline') {
         pending.push(...toInline(child, ctx));
+        attachComments(child, false);
         continue;
       }
 
       flush();
+      const blocksBefore = out.length;
       switch (kind) {
         case 'heading': {
           const children = trimInline(inlineChildren(child, ctx));
@@ -845,6 +890,7 @@ export function collectBlocks(el: Node, ctx: Ctx): Block[] {
           break;
         }
       }
+      attachComments(child, out.length > blocksBefore);
     }
 
     flush();
@@ -1615,6 +1661,9 @@ export function renderInline(nodes: Inline[]): string {
         // can use.
         out += node.display ? `$$\n${node.value}\n$$` : `$${node.value}$`;
         break;
+      case 'footnoteRef':
+        out += `[^${node.label}]`;
+        break;
     }
   }
   return out.replace(/[ \t]+/g, ' ').replace(/ ?\\\n ?/g, '\\\n');
@@ -1829,16 +1878,133 @@ function shiftHeadings(blocks: Block[], by: number): Block[] {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Comments -> Markdown
+// ---------------------------------------------------------------------------
+
+/**
+ * An author and when they wrote, as one line.
+ *
+ * `bold` is off inside a heading, which is already bold -- `### **Name**` is
+ * redundant markup that renders identically to `### Name`.
+ */
+function attribution(message: CommentMessage, bold = true): string {
+  const name = escapeText(message.author);
+  const author = bold ? `**${name}**` : name;
+  return message.timestamp ? `${author} \u00b7 ${escapeText(message.timestamp)}` : author;
+}
+
+/**
+ * Everything a thread has to say, as Markdown blocks rendered to text.
+ *
+ * `skipFirstAttribution` is for the unanchored section, where the opening
+ * message's author and time are already in the heading above it -- printing
+ * them again put "Dennis Wolfe" on two consecutive lines.
+ */
+function threadBody(thread: CommentThread, skipFirstAttribution = false): string {
+  const parts = thread.messages.map((message, i) =>
+    i === 0 && skipFirstAttribution
+      ? renderBlocks(message.blocks)
+      : `${attribution(message)}\n\n${renderBlocks(message.blocks)}`,
+  );
+
+  // Loop renders only the message that opened a thread. Saying so, and naming
+  // the people whose replies are missing, turns a silently truncated
+  // conversation into something the reader knows to go and look at.
+  if (thread.hiddenReplies > 0) {
+    const who =
+      thread.hiddenReplyAuthors.length > 0
+        ? ` from ${thread.hiddenReplyAuthors.map(escapeText).join(', ')}`
+        : '';
+    const plural = thread.hiddenReplies === 1 ? 'reply' : 'replies';
+    parts.push(
+      `_${thread.hiddenReplies} ${plural}${who} not captured — Loop only renders the ` +
+        `first message of a thread in the comments pane._`,
+    );
+  }
+  return parts.join('\n\n').trim();
+}
+
+/**
+ * Threads as GFM footnote definitions.
+ *
+ * A definition's continuation lines are indented four spaces, which is what
+ * lets a footnote hold several paragraphs. GitHub gathers these under a
+ * "Footnotes" heading and links each back to its marker; a renderer without
+ * footnote support leaves them as legible text at the foot of the document.
+ * Either way the body of the page reads as though the comments were not there.
+ */
+function renderFootnotes(threads: readonly CommentThread[]): string {
+  return threads
+    .map((thread) => indentLines(threadBody(thread), '    ', `[^${thread.label}]: `).trimEnd())
+    .join('\n\n');
+}
+
+/**
+ * Threads that could not be placed, as an ordinary section.
+ *
+ * These deliberately do NOT become footnotes: a GFM footnote definition with
+ * no reference pointing at it is dropped by the renderer, so an unanchored
+ * thread written that way would vanish exactly when it is least expected.
+ */
+function renderCommentSection(threads: readonly CommentThread[]): string {
+  const parts = threads.map((thread, i) => {
+    const first = thread.messages[0];
+    const who = first ? attribution(first, false) : 'Comment';
+    return `### ${i + 1}. ${who}\n\n${threadBody(thread, true)}`;
+  });
+  return (
+    `## Comments\n\n` +
+    `_Loop records no link between a comment and the text it refers to, so these ` +
+    `are listed in the order they appear down the page._\n\n` +
+    parts.join('\n\n')
+  );
+}
+
+/**
+ * Where the comments came from and what is missing, stated once.
+ *
+ * Worth the two lines: a reader cannot otherwise tell an export that captured
+ * every thread from one taken with the comments pane shut.
+ */
+function commentsNote(capture: CommentCapture): string {
+  const n = capture.threads.length;
+  const anchored = n - capture.unanchored.length;
+  const placement =
+    capture.unanchored.length === 0
+      ? 'each marked at the point it was made'
+      : anchored === 0
+        ? 'listed in document order; Loop does not record which text they refer to'
+        : `${anchored} marked at the point it was made, ${capture.unanchored.length} listed below`;
+  return (
+    `<!-- loopmark: ${n} comment thread(s) read from Loop, ${placement}. ` +
+    `Reply text is not rendered by Loop and could not be captured. -->`
+  );
+}
+
 export interface ConvertInput {
   root: Element;
   meta: DocMeta;
   diagnostics: Diagnostics;
+  /** Comment threads and their anchors, from `captureComments`. */
+  comments?: CommentCapture;
 }
 
-export function convert({ root, meta, diagnostics }: ConvertInput): ConversionResult {
-  const ctx: Ctx = { diag: diagnostics, imageUrls: [], depth: 0, tableDepth: 0 };
+export function convert({
+  root,
+  meta,
+  diagnostics,
+  comments = EMPTY_CAPTURE,
+}: ConvertInput): ConversionResult {
+  const ctx: Ctx = {
+    diag: diagnostics,
+    imageUrls: [],
+    depth: 0,
+    tableDepth: 0,
+    commentAnchors: comments.anchors,
+  };
   const blocks = collectBlocks(root, ctx);
-  const doc: LoopDoc = { meta, blocks };
+  const doc: LoopDoc = { meta, blocks, comments: comments.threads };
 
   // The page title becomes the document's only H1, so the body nests beneath
   // it. Done here rather than in `headingLevel` on purpose: the IR keeps the
@@ -1849,6 +2015,26 @@ export function convert({ root, meta, diagnostics }: ConvertInput): ConversionRe
     renderBlocks(shiftHeadings(blocks, 1));
 
   warnOnMissingComponents(root, blocks, diagnostics);
+
+  diagnostics.commentThreads = comments.threads.length;
+  diagnostics.commentsAnchored = comments.threads.length - comments.unanchored.length;
+
+  if (comments.threads.length > 0) {
+    markdown += `\n\n${commentsNote(comments)}`;
+    const anchored = comments.threads.filter(
+      (thread) => !comments.unanchored.includes(thread),
+    );
+    if (anchored.length > 0) markdown += `\n\n${renderFootnotes(anchored)}`;
+    if (comments.unanchored.length > 0) {
+      markdown += `\n\n${renderCommentSection(comments.unanchored)}`;
+    }
+  } else if (comments.paneClosed) {
+    // The page has comments; the pane was shut, so none of them are in the DOM.
+    diagnostics.warnings.push(
+      'This page has comments, but the comments pane was closed so they could not ' +
+        'be read. Open comments in Loop and export again.',
+    );
+  }
 
   const uniqueImages = Array.from(new Set(ctx.imageUrls));
   if (uniqueImages.length > 0) {
@@ -1872,10 +2058,23 @@ export function convert({ root, meta, diagnostics }: ConvertInput): ConversionRe
   return { markdown, doc, diagnostics, imageUrls: uniqueImages };
 }
 
+/**
+ * Convert an element to blocks against an existing diagnostics record.
+ *
+ * Exists for comment bodies, which are nested Scriptor documents and so want
+ * the whole block pipeline rather than a text read. Image URLs found inside a
+ * comment are deliberately dropped rather than joining the page's image
+ * appendix, which is a list of the images IN THE PAGE.
+ */
+export function convertFragment(root: Element, diag: Diagnostics): Block[] {
+  return collectBlocks(root, { diag, imageUrls: [], depth: 0, tableDepth: 0 });
+}
+
 /** Convenience wrapper used by tests: convert an element with default metadata. */
-export function convertElement(root: Element, meta?: Partial<DocMeta>): ConversionResult {
-  const diagnostics: Diagnostics = {
-    contentRootStrategy: 'test',
+/** A blank diagnostics record. One definition, so a new field cannot be missed. */
+export function emptyDiagnostics(strategy = 'unknown'): Diagnostics {
+  return {
+    contentRootStrategy: strategy,
     shadowRootsPierced: 0,
     unrecognizedElements: 0,
     unrecognizedSamples: [],
@@ -1883,10 +2082,21 @@ export function convertElement(root: Element, meta?: Partial<DocMeta>): Conversi
     elementsVisited: 0,
     droppedDataImages: 0,
     collapsedSections: [],
+    commentThreads: 0,
+    commentsAnchored: 0,
     warnings: [],
   };
+}
+
+export function convertElement(
+  root: Element,
+  meta?: Partial<DocMeta>,
+  comments?: CommentCapture,
+): ConversionResult {
+  const diagnostics = emptyDiagnostics('test');
   return convert({
     root,
+    comments,
     meta: {
       title: meta?.title ?? 'Test Page',
       url: meta?.url ?? 'https://example.invalid/page',

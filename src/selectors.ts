@@ -160,6 +160,24 @@ export const EXCLUDE_SELECTORS: readonly string[] = [
   '.scriptor-pageTitle',
   '[data-automation-type="Title"]',
 
+  /**
+   * The comments pane. Read separately by `captureComments` and rendered as
+   * footnotes, so including it here would print every thread twice -- once
+   * mid-document wherever the pane happens to sit, and once as a footnote.
+   *
+   * It lives outside `.scriptor-pageContainer`, so this only bites when the
+   * content root falls through to `.scriptor-canvas`; that fallback exists, so
+   * the exclusion is not theoretical. Excluding the pane does NOT hinder
+   * reading it: exclusions are tested against each element as the walk reaches
+   * it, and comment extraction starts its own walk inside a thread.
+   * VERIFIED 2026-09-17 against a saved Loop page.
+   */
+  '#comments-hosting-element',
+  '[data-automation-type="centralizedGutterView"]',
+  '[data-automation-type="gutterView"]',
+  '.conversa-comment',
+  '.scriptor-conversa-centralizedViewButton',
+
   // Editor affordances rendered inside the content region.
   '[data-testid="comment-thread"]',
   '[class*="commentThread" i]',
@@ -636,3 +654,101 @@ export const FLUENT_WRAPPER_SELECTOR =
  */
 export const MATH_SELECTOR = '.katex-display, .katex, math';
 export const TEX_ANNOTATION_SELECTOR = 'annotation[encoding="application/x-tex"]';
+
+// ---------------------------------------------------------------------------
+// Comments ("Conversa")
+// ---------------------------------------------------------------------------
+
+/**
+ * Loop's comment system is internally "Conversa", and it renders OUTSIDE the
+ * page content: `#comments-hosting-element` is a sibling of
+ * `.scriptor-pageContainer` under `.scriptor-canvas`. That is why comments
+ * have never leaked into the export, and why reading them needs its own pass.
+ *
+ * VERIFIED 2026-09-17 against a saved Loop page with four threads.
+ */
+export const COMMENTS_PANE_SELECTOR =
+  '#comments-hosting-element, [data-automation-type="centralizedGutterView"]';
+
+/**
+ * The list of threads inside the pane. Its direct children are the wrappers
+ * Loop positions, which is what `COMMENT_THREAD_SELECTOR` resolves up to.
+ */
+export const COMMENT_FEED_SELECTOR = '[role="feed"]';
+
+/**
+ * One thread. The `[role="feed"]` inside the pane holds one positioned wrapper
+ * per thread, each containing a `gutterView`.
+ */
+export const COMMENT_THREAD_SELECTOR =
+  '[data-automation-type="gutterView"], .conversa-comment';
+
+/** One message within a thread. Loop gives replies a higher `aria-level`. */
+export const COMMENT_MESSAGE_SELECTOR =
+  '[role="comment"], [data-automation-type="messageItem"]';
+
+/**
+ * A message body, which is a nested Scriptor document -- the same markup as
+ * the page, so the ordinary block pipeline converts it unchanged.
+ */
+export const COMMENT_BODY_SELECTOR = '[role="group"][aria-label="Comment content" i]';
+
+/**
+ * Avatars name the participants. Order is load-bearing: the first avatar in a
+ * message is its author, and any that follow are the people who replied --
+ * which is how an unrendered reply chain can still be attributed.
+ */
+export const COMMENT_AVATAR_SELECTOR = '[role="img"][aria-label]';
+
+/** Relative time only ("43min ago"); Loop publishes no absolute timestamp. */
+export const COMMENT_TIME_SELECTOR = 'time';
+
+/** "2 replies" / "1 reply", counting messages Loop did NOT render. */
+export const COMMENT_REPLY_COUNT_SELECTOR = '[data-automation-type="replyCount"]';
+export const COMMENT_REPLY_COUNT_PATTERN = /^\s*(\d+|one)\s+repl(?:y|ies)\s*$/i;
+
+/** Fallback author source: "Comment thread started by Dennis Wolfe with 2 replies". */
+export const COMMENT_STARTED_BY_PATTERN = /comment thread started by\s+(.+?)(?:\s+with\s+.*)?$/i;
+
+/**
+ * The in-page "Open comments" affordance.
+ *
+ * The one signal that survives the comments pane being CLOSED. Loop only puts
+ * threads in the DOM while the pane is open, so without this a page with
+ * comments and a page without them look identical and the export would quietly
+ * omit the conversation. Its presence with zero readable threads is what lets
+ * loopmark say "this page has comments you did not capture" instead.
+ * VERIFIED 2026-09-17 by comparing two saves of the same page.
+ */
+export const COMMENTS_PRESENT_SELECTOR =
+  '[data-automation-type="CentralizedViewButton"], .scriptor-conversa-centralizedViewButton';
+
+/**
+ * Blocks a comment thread may be anchored to.
+ *
+ * Nothing in the DOM links a thread to the text it annotates -- the thread ids
+ * appear nowhere in the page body -- so the only available signal is geometric:
+ * Loop absolutely positions each gutter card to line up with its anchor. These
+ * are the elements whose position is compared against the card's.
+ */
+export const COMMENT_ANCHOR_CANDIDATE_SELECTOR = [
+  '.scriptor-paragraph',
+  '[class*="scriptor-paragraph" i]',
+  '[role="heading"]',
+  'h1, h2, h3, h4, h5, h6',
+].join(', ');
+
+/**
+ * How far above a gutter card its anchor may start, in CSS pixels.
+ *
+ * Loop aligns a card with the top of the text it annotates, then pushes cards
+ * DOWN to stop them overlapping each other. So a card is never above its
+ * anchor but can sit well below it, and the window has to be generous in one
+ * direction only. Beyond this the match is treated as a guess and the thread
+ * falls back to the unanchored appendix, because a footnote marker on the
+ * wrong paragraph is worse than no marker at all.
+ */
+export const COMMENT_ANCHOR_MAX_DRIFT = 600;
+
+/** A card may start slightly above its anchor through rounding; allow a little. */
+export const COMMENT_ANCHOR_TOLERANCE = 8;

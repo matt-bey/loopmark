@@ -24,7 +24,14 @@ export type Inline =
   /** An @mention or person chip, flattened to the display name. */
   | { type: 'mention'; name: string }
   /** A LaTeX equation, rendered as `$...$` or `$$...$$`. */
-  | { type: 'math'; value: string; display: boolean };
+  | { type: 'math'; value: string; display: boolean }
+  /**
+   * A GFM footnote reference, e.g. `[^c1]`, marking the point a Loop comment
+   * thread was attached to. Carries only the label: the thread itself is held
+   * on the document, so a reference costs one token in the text flow and the
+   * conversation lands at the bottom where it cannot interrupt the reading.
+   */
+  | { type: 'footnoteRef'; label: string };
 
 // ---------------------------------------------------------------------------
 // Block content
@@ -69,6 +76,45 @@ export type Block =
   | { type: 'image'; alt: string; src: string };
 
 // ---------------------------------------------------------------------------
+// Comments
+// ---------------------------------------------------------------------------
+
+/**
+ * One message in a Loop comment thread.
+ *
+ * `blocks` rather than a string because a Loop comment body is itself a
+ * miniature Scriptor document -- it can contain bold, links, lists and
+ * @mentions, and it is converted by the same pipeline as the page.
+ */
+export interface CommentMessage {
+  author: string;
+  /**
+   * What Loop displayed, which is a RELATIVE time ("43min ago"). Loop exposes
+   * no absolute timestamp in the DOM, so this is only meaningful alongside the
+   * export time recorded in `DocMeta.exportedAt`. `null` when unreadable.
+   */
+  timestamp: string | null;
+  blocks: Block[];
+}
+
+export interface CommentThread {
+  /** Loop's own thread id, so a re-export labels the same thread the same way. */
+  id: string;
+  /** Footnote label, e.g. `c1`. Assigned in document order. */
+  label: string;
+  /** Messages actually present in the DOM. See `hiddenReplies`. */
+  messages: CommentMessage[];
+  /**
+   * Replies Loop counted but did not render. The gutter shows only the
+   * thread-opening message, so this is normally the whole reply chain; the
+   * reader is told rather than left to assume the thread was one comment long.
+   */
+  hiddenReplies: number;
+  /** Who wrote those unrendered replies, recovered from the thread's avatars. */
+  hiddenReplyAuthors: string[];
+}
+
+// ---------------------------------------------------------------------------
 // Document
 // ---------------------------------------------------------------------------
 
@@ -82,6 +128,8 @@ export interface DocMeta {
 export interface LoopDoc {
   meta: DocMeta;
   blocks: Block[];
+  /** Comment threads read from Loop's comments pane, in document order. */
+  comments: CommentThread[];
 }
 
 // ---------------------------------------------------------------------------
@@ -106,6 +154,10 @@ export interface Diagnostics {
   droppedDataImages: number;
   /** Headings whose section was collapsed, and whose content is therefore absent. */
   collapsedSections: string[];
+  /** Comment threads read from the comments pane. */
+  commentThreads: number;
+  /** How many of those were placed next to the block they annotate. */
+  commentsAnchored: number;
   /** Non-fatal problems worth telling the user about. */
   warnings: string[];
 }

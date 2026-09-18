@@ -104,6 +104,7 @@ drag it, so that is how you tell which build produced an export.
 | Images | `![alt](url)` plus a footnote noting the URLs are access-controlled. A pasted image is an inline base64 `data:` URI, routinely hundreds of KB, and is replaced with a placeholder. |
 | Mentions | Flattened to the plain display name. No identity resolution. |
 | Loop components | Best-effort static snapshot in a labelled fenced block. |
+| Comments | GFM footnotes. A `[^c1]` marker sits at the paragraph the thread annotates and the conversation is collected at the foot of the document, so the page still reads straight through. **The comments pane must be open** -- Loop puts threads in the DOM only while it is, and loopmark says so when it finds comments it could not read. |
 
 | Page title | Read from `#headerContainer`, where Loop renders it as a miniature page of its own -- not an `<h1>`, and with no "title" in its class name. Becomes the document's `# ` heading. |
 
@@ -122,6 +123,18 @@ title, source URL, and export timestamp.
 ## Limitations
 
 Read this section before relying on the output.
+
+- **Comment replies are not captured.** Loop's gutter renders only the message
+  that opened each thread; replies exist as a count and one avatar per replier.
+  loopmark will not click a thread open, because that marks it as read for you
+  and the read-only rule outranks completeness -- so an export says
+  `2 replies from … not captured` rather than presenting a truncated
+  conversation as a whole one.
+- **A comment's position is inferred, not recorded.** Nothing in Loop's markup
+  links a thread to the text it refers to; the only signal is that Loop lines
+  the gutter card up with its anchor. loopmark matches on that geometry and
+  falls back to an unanchored `## Comments` section whenever the match would be
+  a guess -- including offline, where `npm run try` has no layout to measure.
 
 - **It is a DOM scraper.** Microsoft can break it with any UI change, without
   notice. Everything Loop-specific is isolated in
@@ -153,8 +166,8 @@ Read this section before relying on the output.
   than to content -- see [`spikes/RESULTS.md`](spikes/RESULTS.md). If Loop ever
   moves content into a closed root, no bookmarklet or extension can read it and
   this project ends. `spikes/probe.js` checks for that.
-- **Comments, version history, and page metadata are not exported.** Only the
-  document body.
+- **Version history and page metadata are not exported.** The document body and
+  its comments, and nothing else.
 - **A Loop table-of-contents block is dropped on purpose.** It is generated
   from headings that are already in the output, and its links point at
   `loop.cloud.microsoft` URLs that resolve for nobody reading the Markdown.

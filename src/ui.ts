@@ -234,6 +234,10 @@ export function showOverlay(options: OverlayOptions): void {
         `disclosures expanded  : ${diagnostics.expandedWidgets}`,
         `unrecognized elements : ${diagnostics.unrecognizedElements}`,
         `unrecognized tags     : ${diagnostics.unrecognizedSamples.join(', ') || '(none)'}`,
+        `comment threads       : ${diagnostics.commentThreads}` +
+          (diagnostics.commentThreads > 0
+            ? ` (${diagnostics.commentsAnchored} placed in the text)`
+            : ''),
       ].join('\n'),
     }),
   ]);

@@ -15,6 +15,8 @@ const diagnostics = (over: Partial<Diagnostics> = {}): Diagnostics => ({
   unrecognizedSamples: [],
   droppedDataImages: 0,
   collapsedSections: [],
+  commentThreads: 0,
+  commentsAnchored: 0,
   expandedWidgets: 2,
   elementsVisited: 120,
   warnings: [],
